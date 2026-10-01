@@ -1,0 +1,7 @@
+{
+  "name": "millhouse-word-bank",
+  "private": true,
+  "dependencies": {
+    "@netlify/database": "latest"
+  }
+}
