@@ -85,6 +85,8 @@ main{max-width:960px;margin:0 auto;padding:18px 14px 40px;}
 .conjcard{background:var(--mortar);border:2px solid var(--mortarline);border-radius:10px;padding:16px 18px;}
 .conjcard h3{margin:0 0 10px;font-size:1rem;font-family:'Quicksand';color:var(--accent);}
 .conjcard .letter{font-weight:800;color:var(--brick-lo);}
+.conjgrouptitle{font-family:'Bitter',serif;font-weight:800;font-size:1.05rem;color:var(--brick-lo);max-width:680px;margin:18px auto 10px;text-align:left;}
+.conjgrouptitle:first-of-type{margin-top:4px;}
 
 footer{text-align:center;color:var(--sub);font-size:.78rem;padding:10px 20px 24px;font-weight:600;}
 .backbtn{display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;border:none;border-radius:20px;padding:8px 16px;font-family:'Quicksand';font-weight:700;font-size:.85rem;cursor:pointer;margin:0 0 16px;}
@@ -96,7 +98,10 @@ footer{text-align:center;color:var(--sub);font-size:.78rem;padding:10px 20px 24p
 .tzbox{background:var(--mortar);border:2px solid var(--mortarline);border-radius:14px;padding:22px;max-width:380px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.3);}
 .tzbox h2{margin:0 0 12px;font-size:1.15rem;color:var(--brick-lo);}
 .tzbox label{display:block;font-weight:700;font-size:.9rem;margin:12px 0 5px;color:var(--sub);}
-.tzbox input, .tzbox select{width:100%;font-family:inherit;font-weight:600;font-size:1rem;padding:9px 12px;border-radius:9px;border:2px solid var(--mortarline);background:#fff0;color:var(--ink);}
+.tzbox input, .tzbox select{width:100%;font-family:inherit;font-weight:600;font-size:1rem;padding:9px 12px;border-radius:9px;border:2px solid var(--mortarline);background:#fff;color:#222;color-scheme:light;}
+.tzbox .tztabs{display:flex;gap:8px;margin-bottom:4px;}
+.tzbox .tztab{flex:1;border:2px solid var(--mortarline);background:transparent;color:var(--sub);font-family:'Quicksand';font-weight:700;font-size:.88rem;padding:8px;border-radius:9px;cursor:pointer;}
+.tzbox .tztab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
 .tzrow{display:flex;gap:10px;margin-top:18px;}
 .tzbtn{flex:1;border:none;border-radius:10px;padding:10px;font-family:'Quicksand';font-weight:700;font-size:.95rem;cursor:pointer;}
 .tzbtn.primary{background:var(--accent);color:#fff;}
@@ -264,10 +269,15 @@ const BASE_CLASSES = [
 ];
 const UKS2_EXTRA_CLASSES = [["determiners","Determiners"],["modalverbs","Modal Verbs"],["personification","Personification"]];
 const CLASSES = BASE_CLASSES.concat(UKS2_EXTRA_CLASSES);
-const CONJ = {
-  fanboys:{title:"FANBOYS — coordinating conjunctions", items:[["F","for"],["A","and"],["N","nor"],["B","but"],["O","or"],["Y","yet"],["S","so"]]},
-  awhitebus:{title:"A WHITE BUS — subordinating conjunctions", items:[["A","after, although, as"],["W","when, whenever, where, wherever, while"],["H","how, however"],["I","if, in case"],["T","though (and sometimes than)"],["E","even if, even though"],["B","because, before"],["U","unless, until"],["S","since, so that"]]}
-};
+const CONJ_GROUPS = [
+  { groupTitle:"Co-ordinating Conjunctions", cards:[
+    { title:"FANBOYS", items:[["F","for"],["A","and"],["N","nor"],["B","but"],["O","or"],["Y","yet"],["S","so"]] }
+  ]},
+  { groupTitle:"Subordinating Conjunctions", cards:[
+    { title:"ISAWAWABUB", items:[["I","if — shows a condition, like \u201Cif it rains\u201D"],["S","since — shows cause or time, like \u201Csince you asked\u201D"],["A","as — shows time or reason, like \u201Cas I walked\u201D"],["W","when — shows time, like \u201Cwhen we arrive\u201D"],["A","although — shows a contrast, like \u201Calthough it is cold\u201D"],["W","while — shows simultaneous action, like \u201Cwhile you sleep\u201D"],["A","after — shows sequence of time, like \u201Cafter school\u201D"],["B","before — shows sequence of time, like \u201Cbefore you go\u201D"],["U","until — shows duration up to a point, like \u201Cuntil tomorrow\u201D"],["B","because — shows a reason, like \u201Cbecause I said so\u201D"]] },
+    { title:"A WHITE BUS", items:[["A","after, although, as"],["W","when, whenever, where, wherever, while"],["H","how, however"],["I","if, in case"],["T","though (and sometimes than)"],["E","even if, even though"],["B","because, before"],["U","unless, until"],["S","since, so that"]] }
+  ]}
+];
 
 let state = { view:'stage', stage:null, topic:null, cls:null, q:'' };
 
@@ -381,13 +391,17 @@ function render(){
     if(state.cls==='conjunctions' && STAGES[state.stage][0]!=='KS1'){
       const cn = document.createElement('div'); cn.className='classname'; cn.textContent='Same for every topic';
       card.appendChild(cn);
-      const box = document.createElement('div'); box.className='conjbox';
-      Object.values(CONJ).forEach(g=>{
-        const c=document.createElement('div'); c.className='conjcard';
-        c.innerHTML = '<h3>'+g.title+'</h3>' + g.items.map(([l,w])=>'<div><span class="letter">'+l+'</span> — '+w+'</div>').join('');
-        box.appendChild(c);
+      CONJ_GROUPS.forEach(group=>{
+        const gt = document.createElement('div'); gt.className='conjgrouptitle'; gt.textContent=group.groupTitle;
+        card.appendChild(gt);
+        const box = document.createElement('div'); box.className='conjbox';
+        group.cards.forEach(g=>{
+          const c=document.createElement('div'); c.className='conjcard';
+          c.innerHTML = '<h3>'+g.title+'</h3>' + g.items.map(([l,w])=>'<div><span class="letter">'+l+'</span> — '+w+'</div>').join('');
+          box.appendChild(c);
+        });
+        card.appendChild(box);
       });
-      card.appendChild(box);
       main.appendChild(card);
       return;
     }
@@ -427,19 +441,32 @@ window.addEventListener('resize', ()=>{
   resizeT = setTimeout(()=>{ if(state.view==='topics'||state.view==='classes') render(); }, 200);
 });
 
-// ---- Teacher Zone: fetch + merge teacher-added words, and the add-word panel ----
+// ---- Teacher Zone: fetch + merge teacher-added topics/words, and the edit panel ----
 async function loadCustomWords(){
   try{
     const res = await fetch('/api/words');
     if(!res.ok) return;
-    const rows = await res.json();
-    for(const row of rows){
+    const data = await res.json();
+    const topics = data.topics || [];
+    const added = data.added || [];
+    const removed = data.removed || [];
+    for(const row of topics){
+      if(!T[row.slug]) T[row.slug] = [row.label, {}];
+      TOPIC_ONLY_STAGE[row.slug] = row.stage;
+    }
+    for(const row of added){
       const stageIdx = STAGES.findIndex(s=>s[0]===row.stage);
       if(stageIdx===-1 || !T[row.topic_slug]) continue;
       const classes = T[row.topic_slug][1];
       if(!classes[row.word_class]) classes[row.word_class] = [];
       const already = classes[row.word_class].some(([w])=>w.toLowerCase()===row.word.toLowerCase());
       if(!already) classes[row.word_class].push([row.word, stageIdx]);
+    }
+    for(const row of removed){
+      if(!T[row.topic_slug]) continue;
+      const classes = T[row.topic_slug][1];
+      if(!classes[row.word_class]) continue;
+      classes[row.word_class] = classes[row.word_class].filter(([w])=>w.toLowerCase()!==row.word.toLowerCase());
     }
   } catch(e){ /* offline or function unavailable — the built-in word lists still work fine */ }
 }
@@ -495,11 +522,24 @@ function openPinPrompt(){
   box.querySelector('#tzpin').focus();
 }
 
+function tzTabs(box, mode){
+  const tabs = document.createElement('div'); tabs.className='tztabs';
+  const addTab = document.createElement('button'); addTab.className='tztab'+(mode==='add'?' active':''); addTab.textContent='Add a word';
+  const removeTab = document.createElement('button'); removeTab.className='tztab'+(mode==='remove'?' active':''); removeTab.textContent='Remove a word';
+  const topicTab = document.createElement('button'); topicTab.className='tztab'+(mode==='topic'?' active':''); topicTab.textContent='Add a topic';
+  addTab.onclick = openAddWordForm;
+  removeTab.onclick = openRemoveWordForm;
+  topicTab.onclick = openAddTopicForm;
+  tabs.appendChild(addTab); tabs.appendChild(removeTab); tabs.appendChild(topicTab);
+  box.appendChild(tabs);
+}
+
 function openAddWordForm(){
   const ov = document.getElementById('tzOverlay');
   ov.innerHTML = '';
   const box = document.createElement('div'); box.className='tzbox';
-  box.innerHTML = '<h2>Add a word</h2>';
+  box.innerHTML = '<h2>Teacher Zone</h2>';
+  tzTabs(box, 'add');
 
   const stageSel = document.createElement('select');
   STAGES.forEach(([code,desc])=>{ const o=document.createElement('option'); o.value=code; o.textContent=code+' — '+desc; stageSel.appendChild(o); });
@@ -535,7 +575,7 @@ function openAddWordForm(){
     add.textContent='Adding...'; add.disabled=true;
     try{
       const res = await fetch('/api/words', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-        pin: tzPin, stage: stageSel.value, topic_slug: topicSel.value, word_class: classSel.value, word
+        pin: tzPin, action:'add', stage: stageSel.value, topic_slug: topicSel.value, word_class: classSel.value, word
       })});
       const data = await res.json();
       if(!res.ok){ msg.className='tzmsg err'; msg.textContent=data.error || 'Something went wrong.'; }
@@ -554,6 +594,133 @@ function openAddWordForm(){
     add.textContent='Add word'; add.disabled=false;
   };
   row.appendChild(done); row.appendChild(add);
+  box.appendChild(row); box.appendChild(msg);
+  ov.appendChild(box);
+}
+
+function openRemoveWordForm(){
+  const ov = document.getElementById('tzOverlay');
+  ov.innerHTML = '';
+  const box = document.createElement('div'); box.className='tzbox';
+  box.innerHTML = '<h2>Teacher Zone</h2>';
+  tzTabs(box, 'remove');
+
+  const stageSel = document.createElement('select');
+  STAGES.forEach(([code,desc])=>{ const o=document.createElement('option'); o.value=code; o.textContent=code+' — '+desc; stageSel.appendChild(o); });
+  const topicSel = document.createElement('select');
+  const classSel = document.createElement('select');
+  const wordSel = document.createElement('select');
+
+  function refreshTopics(){
+    topicSel.innerHTML = '';
+    tzTopicOptions(stageSel.value).forEach(([slug,[label]])=>{ const o=document.createElement('option'); o.value=slug; o.textContent=label; topicSel.appendChild(o); });
+  }
+  function refreshClasses(){
+    classSel.innerHTML = '';
+    tzClassOptions(stageSel.value).forEach(([slug,label])=>{ const o=document.createElement('option'); o.value=slug; o.textContent=label; classSel.appendChild(o); });
+  }
+  function refreshWords(){
+    wordSel.innerHTML = '';
+    const stageIdx = STAGES.findIndex(s=>s[0]===stageSel.value);
+    const list = ((T[topicSel.value]||[])[1]||{})[classSel.value] || [];
+    const current = list.filter(([,tier])=>tier<=stageIdx).map(([w])=>w).sort((a,b)=>a.localeCompare(b));
+    if(current.length===0){
+      const o=document.createElement('option'); o.value=''; o.textContent='(no words here yet)'; wordSel.appendChild(o);
+    } else {
+      current.forEach(w=>{ const o=document.createElement('option'); o.value=w; o.textContent=w; wordSel.appendChild(o); });
+    }
+  }
+  stageSel.onchange = ()=>{ refreshTopics(); refreshClasses(); refreshWords(); };
+  topicSel.onchange = refreshWords;
+  classSel.onchange = refreshWords;
+  refreshTopics(); refreshClasses(); refreshWords();
+
+  const lab = (t)=>{ const l=document.createElement('label'); l.textContent=t; return l; };
+  box.appendChild(lab('Key stage')); box.appendChild(stageSel);
+  box.appendChild(lab('Topic')); box.appendChild(topicSel);
+  box.appendChild(lab('Word class')); box.appendChild(classSel);
+  box.appendChild(lab('Word to remove')); box.appendChild(wordSel);
+
+  const row = document.createElement('div'); row.className='tzrow';
+  const done = document.createElement('button'); done.className='tzbtn ghost'; done.textContent='Done'; done.onclick=closeTeacherZone;
+  const remove = document.createElement('button'); remove.className='tzbtn primary'; remove.textContent='Remove word';
+  const msg = document.createElement('div'); msg.className='tzmsg';
+
+  remove.onclick = async ()=>{
+    const word = wordSel.value;
+    if(!word){ msg.className='tzmsg err'; msg.textContent='Nothing to remove here.'; return; }
+    remove.textContent='Removing...'; remove.disabled=true;
+    try{
+      const res = await fetch('/api/words', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        pin: tzPin, action:'remove', stage: stageSel.value, topic_slug: topicSel.value, word_class: classSel.value, word
+      })});
+      const data = await res.json();
+      if(!res.ok){ msg.className='tzmsg err'; msg.textContent=data.error || 'Something went wrong.'; }
+      else {
+        msg.className='tzmsg ok'; msg.textContent='Removed for everyone.';
+        const classes = T[topicSel.value][1];
+        classes[classSel.value] = (classes[classSel.value]||[]).filter(([w])=>w.toLowerCase()!==word.toLowerCase());
+        refreshWords();
+        if(state.view==='words' && state.topic===topicSel.value && state.cls===classSel.value) render();
+      }
+    } catch(e){
+      msg.className='tzmsg err'; msg.textContent="Couldn't reach the teacher zone — check your connection.";
+    }
+    remove.textContent='Remove word'; remove.disabled=false;
+  };
+  row.appendChild(done); row.appendChild(remove);
+  box.appendChild(row); box.appendChild(msg);
+  ov.appendChild(box);
+}
+
+function openAddTopicForm(){
+  const ov = document.getElementById('tzOverlay');
+  ov.innerHTML = '';
+  const box = document.createElement('div'); box.className='tzbox';
+  box.innerHTML = '<h2>Teacher Zone</h2>';
+  tzTabs(box, 'topic');
+
+  const stageSel = document.createElement('select');
+  STAGES.forEach(([code,desc])=>{ const o=document.createElement('option'); o.value=code; o.textContent=code+' — '+desc; stageSel.appendChild(o); });
+  const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.placeholder='e.g. Volcanoes';
+
+  const lab = (t)=>{ const l=document.createElement('label'); l.textContent=t; return l; };
+  box.appendChild(lab('Key stage this topic is for')); box.appendChild(stageSel);
+  box.appendChild(lab('Topic name')); box.appendChild(nameInput);
+
+  const note = document.createElement('div'); note.className='tzmsg';
+  note.style.color='var(--sub)'; note.style.fontWeight='600';
+  note.textContent = 'This creates an empty topic with blank word-class tiles for that key stage — switch to "Add a word" afterwards to start filling it in.';
+  box.appendChild(note);
+
+  const row = document.createElement('div'); row.className='tzrow';
+  const done = document.createElement('button'); done.className='tzbtn ghost'; done.textContent='Done'; done.onclick=closeTeacherZone;
+  const create = document.createElement('button'); create.className='tzbtn primary'; create.textContent='Create topic';
+  const msg = document.createElement('div'); msg.className='tzmsg';
+
+  create.onclick = async ()=>{
+    const label = nameInput.value.trim();
+    if(!label){ msg.className='tzmsg err'; msg.textContent='Type a topic name first.'; return; }
+    create.textContent='Creating...'; create.disabled=true;
+    try{
+      const res = await fetch('/api/words', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        pin: tzPin, action:'add_topic', stage: stageSel.value, label
+      })});
+      const data = await res.json();
+      if(!res.ok){ msg.className='tzmsg err'; msg.textContent=data.error || 'Something went wrong.'; }
+      else {
+        T[data.slug] = [data.label, {}];
+        TOPIC_ONLY_STAGE[data.slug] = data.stage;
+        msg.className='tzmsg ok'; msg.textContent='"'+data.label+'" created for '+data.stage+'. Switch to "Add a word" to start populating it.';
+        nameInput.value='';
+        if(state.view==='topics') render();
+      }
+    } catch(e){
+      msg.className='tzmsg err'; msg.textContent="Couldn't reach the teacher zone — check your connection.";
+    }
+    create.textContent='Create topic'; create.disabled=false;
+  };
+  row.appendChild(done); row.appendChild(create);
   box.appendChild(row); box.appendChild(msg);
   ov.appendChild(box);
 }
