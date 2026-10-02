@@ -1,774 +1,855 @@
-import { useState, useEffect, useRef, useReducer, useCallback } from "react";
-
-const SQUARES = new Set([1,4,9,16,25,36,49,64,81,100,121,144]);
-const COLS4 = ["#FF6B6B","#4ECDC4","#45B7D1","#FFEAA7"];
-const ADMIN_PIN = "1234";
-
-function genQ(mode) {
-  const type = mode === "multiply" ? "mult" : mode === "divide" ? "div" : Math.random() < 0.5 ? "mult" : "div";
-  const a = Math.floor(Math.random() * 12) + 1;
-  const b = Math.floor(Math.random() * 12) + 1;
-  if (type === "mult") {
-    const ans = a * b;
-    return { text: a + " × " + b, answer: ans, isSquare: a === b && SQUARES.has(ans) };
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Writing Word Bank</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;800&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --brick:#a2492f; --brick-hi:#c05f3f; --brick-lo:#7d381f;
+  --mortar:#efe6d3; --mortarline:#d9c9a8;
+  --ink:#2e2618; --sub:#75674f; --accent:#436f56; --accent-hi:#57937a; --gold:#c99a3c;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --brick:#b8543a; --brick-hi:#d06e4c; --brick-lo:#8a3f27;
+    --mortar:#20190f; --mortarline:#382c1a;
+    --ink:#f1e9d8; --sub:#c2b393; --accent:#5a9a7c; --accent-hi:#71b593; --gold:#dcb35c;
   }
-  return { text: (a * b) + " ÷ " + a, answer: b, isSquare: false };
 }
+:root[data-theme="dark"]{
+  --brick:#b8543a; --brick-hi:#d06e4c; --brick-lo:#8a3f27;
+  --mortar:#20190f; --mortarline:#382c1a;
+  --ink:#f1e9d8; --sub:#c2b393; --accent:#5a9a7c; --accent-hi:#71b593; --gold:#dcb35c;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--mortar);color:var(--ink);font-family:'Quicksand',system-ui,sans-serif;
+  background-image:
+    repeating-linear-gradient(0deg, var(--mortarline) 0 2px, transparent 2px 42px),
+    repeating-linear-gradient(90deg, var(--mortarline) 0 2px, transparent 2px 84px);
+  min-height:100vh;
+}
+h1,h2{font-family:'Bitter',Georgia,serif;}
+header{position:sticky;top:0;background:var(--mortar);padding:14px 16px 10px;padding-top:calc(14px + env(safe-area-inset-top,0px));border-bottom:2px solid var(--mortarline);z-index:5;}
+.title{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;}
+.title h1{margin:0;font-size:1.6rem;font-weight:800;color:var(--brick-lo);}
+.crumbs{display:flex;flex-wrap:wrap;gap:5px;align-items:center;font-size:1rem;font-weight:600;color:var(--sub);}
+.crumbs button{background:none;border:none;font:inherit;font-weight:700;color:var(--accent);cursor:pointer;padding:3px 6px;border-radius:5px;}
+.crumbs button:hover{background:var(--mortarline);}
+.crumbs .sep{opacity:.55;}
+main{max-width:960px;margin:0 auto;padding:18px 14px 40px;}
+.intro{color:var(--sub);font-size:1.1rem;margin:0 0 18px;font-weight:600;}
+.search{width:100%;max-width:380px;display:block;margin:0 auto 20px;font-family:inherit;font-weight:600;font-size:1.1rem;padding:11px 16px;border-radius:10px;border:2px solid var(--mortarline);background:var(--mortar);color:var(--ink);}
 
-function genChoices(answer) {
-  const s = new Set([answer]);
-  while (s.size < 4) {
-    const c = answer + Math.floor(Math.random() * 10) - 5;
-    if (c > 0 && c !== answer) s.add(c);
+.wall{display:flex;flex-direction:column;align-items:center;gap:12px;}
+.wall-row{display:flex;gap:12px;}
+.brick{
+  --w:190px;
+  width:var(--w); min-height:88px;
+  background:linear-gradient(180deg,var(--bhi,var(--brick-hi)),var(--blo,var(--brick)));
+  border-radius:8px; border:none; cursor:pointer;
+  box-shadow:inset 0 -4px 0 rgba(0,0,0,.28), inset 0 2px 0 rgba(255,255,255,.18), 0 3px 5px rgba(0,0,0,.18);
+  color:#fff; font-family:'Quicksand',sans-serif; font-weight:700; font-size:1.2rem; line-height:1.25;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:12px 10px;
+  transform:scale(.85); opacity:0; animation:lay .35s ease forwards;
+  transition:transform .15s ease, box-shadow .15s ease;
+}
+.brick:hover{transform:translateY(-3px); box-shadow:inset 0 -4px 0 rgba(0,0,0,.28), inset 0 2px 0 rgba(255,255,255,.18), 0 7px 11px rgba(0,0,0,.22);}
+.brick:active{transform:translateY(0) scale(.98);}
+.brick.stage{--w:200px; min-height:104px; font-size:1.4rem;}
+.brick .stagesub{display:block;font-weight:500;font-size:.85rem;opacity:.85;margin-top:4px;}
+@keyframes lay{ to{ transform:scale(1); opacity:1; } }
+
+.tile{
+  --w:auto;
+  background:var(--mortar); color:var(--ink); border:2px solid var(--mortarline);
+  border-radius:9px; padding:12px 18px; font-weight:600; font-size:1.25rem;
+  transform:scale(.85); opacity:0; animation:lay .3s ease forwards;
+  min-height:auto; box-shadow:none; cursor:default;
+}
+.tile.phrase{width:100%; text-align:left; font-style:italic; font-weight:600;}
+.tilewrap{display:flex; flex-wrap:wrap; gap:10px; justify-content:center; max-width:760px; margin:0 auto;}
+.tilewrap.phrases{flex-direction:column; align-items:stretch;}
+
+.card{max-width:760px;margin:0 auto;}
+.classname{text-align:center;color:var(--sub);font-weight:700;margin-bottom:14px;font-size:1.05rem;}
+.empty{text-align:center;color:var(--sub);font-weight:600;padding:30px 10px;font-size:1.1rem;}
+
+.conjbox{display:grid;grid-template-columns:1fr;gap:14px;max-width:680px;margin:0 auto;font-size:1.05rem;}
+@media(min-width:640px){.conjbox{grid-template-columns:1fr 1fr;}}
+.conjcard{background:var(--mortar);border:2px solid var(--mortarline);border-radius:10px;padding:16px 18px;}
+.conjcard h3{margin:0 0 10px;font-size:1rem;font-family:'Quicksand';color:var(--accent);}
+.conjcard .letter{font-weight:800;color:var(--brick-lo);}
+.conjgrouptitle{font-family:'Bitter',serif;font-weight:800;font-size:1.05rem;color:var(--brick-lo);max-width:680px;margin:18px auto 10px;text-align:left;}
+.conjgrouptitle:first-of-type{margin-top:4px;}
+
+footer{text-align:center;color:var(--sub);font-size:.78rem;padding:10px 20px 24px;font-weight:600;}
+.backbtn{display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;border:none;border-radius:20px;padding:8px 16px;font-family:'Quicksand';font-weight:700;font-size:.85rem;cursor:pointer;margin:0 0 16px;}
+.backbtn:hover{background:var(--accent-hi);}
+
+.printbtn{display:inline-flex;align-items:center;gap:6px;background:transparent;border:2px solid var(--mortarline);color:var(--sub);font-family:'Quicksand';font-weight:700;font-size:.85rem;padding:7px 14px;border-radius:20px;cursor:pointer;margin:0 0 14px;}
+.printbtn:hover{border-color:var(--accent);color:var(--accent);}
+.printrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
+
+#printArea{display:none;}
+@media print{
+  header, main, footer, #tzOverlay{ display:none !important; }
+  #printArea{ display:block !important; }
+  body{ background:#fff; }
+}
+#printArea{font-family:'Quicksand',system-ui,sans-serif;color:#141414;padding:10px;}
+#printArea .pr-title{display:flex;align-items:baseline;gap:10px;}
+#printArea h1{font-family:'Bitter',Georgia,serif;font-size:1.5rem;margin:0;}
+#printArea .pr-sub{color:#555;font-weight:600;font-size:.9rem;margin:2px 0 18px;}
+#printArea .pr-section{margin-bottom:20px;page-break-inside:avoid;}
+#printArea .pr-heading{font-family:'Bitter',Georgia,serif;font-weight:800;font-size:1.05rem;border-bottom:2px solid #999;padding-bottom:4px;margin-bottom:10px;}
+#printArea .pr-chips{display:flex;flex-wrap:wrap;gap:6px 10px;}
+#printArea .pr-chip{border:1.5px solid #888;border-radius:7px;padding:3px 10px;font-size:.95rem;}
+#printArea .pr-phrases{display:block;}
+#printArea .pr-phrases .pr-chip{display:block;width:100%;border:none;border-bottom:1px dotted #ccc;border-radius:0;padding:4px 0;font-style:italic;box-sizing:border-box;}
+#printArea .pr-conjrow{display:flex;gap:14px;flex-wrap:wrap;}
+#printArea .pr-conjcard{border:1.5px solid #999;border-radius:8px;padding:10px 14px;flex:1;min-width:220px;}
+#printArea .pr-conjcard h4{margin:0 0 6px;font-family:'Bitter',Georgia,serif;font-size:.95rem;}
+#printArea .pr-conjcard ul{margin:0;padding-left:18px;font-size:.85rem;}
+#printArea .pr-grouptitle{font-family:'Bitter',Georgia,serif;font-weight:800;font-size:.95rem;margin:10px 0 6px;}
+#printArea .pr-footer{margin-top:24px;font-size:.75rem;color:#777;border-top:1px solid #ccc;padding-top:8px;}
+
+.tzlink{background:none;border:none;font:inherit;color:var(--sub);text-decoration:underline;cursor:pointer;padding:0;font-weight:700;}
+.tzlink:hover{color:var(--accent);}
+.tzoverlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50;}
+.tzbox{background:var(--mortar);border:2px solid var(--mortarline);border-radius:14px;padding:22px;max-width:380px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.3);}
+.tzbox h2{margin:0 0 12px;font-size:1.15rem;color:var(--brick-lo);}
+.tzbox label{display:block;font-weight:700;font-size:.9rem;margin:12px 0 5px;color:var(--sub);}
+.tzbox input, .tzbox select{width:100%;font-family:inherit;font-weight:600;font-size:1rem;padding:9px 12px;border-radius:9px;border:2px solid var(--mortarline);background:#fff;color:#222;color-scheme:light;}
+.tzbox .tztabs{display:flex;gap:8px;margin-bottom:4px;}
+.tzbox .tztab{flex:1;border:2px solid var(--mortarline);background:transparent;color:var(--sub);font-family:'Quicksand';font-weight:700;font-size:.88rem;padding:8px;border-radius:9px;cursor:pointer;}
+.tzbox .tztab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.tzrow{display:flex;gap:10px;margin-top:18px;}
+.tzbtn{flex:1;border:none;border-radius:10px;padding:10px;font-family:'Quicksand';font-weight:700;font-size:.95rem;cursor:pointer;}
+.tzbtn.primary{background:var(--accent);color:#fff;}
+.tzbtn.primary:hover{background:var(--accent-hi);}
+.tzbtn.ghost{background:transparent;color:var(--sub);border:2px solid var(--mortarline);}
+.tzmsg{margin-top:10px;font-weight:700;font-size:.88rem;}
+.tzmsg.err{color:#b23a3a;}
+.tzmsg.ok{color:var(--accent);}
+</style>
+</head>
+<body>
+<header>
+  <div class="title"><span style="font-size:1.4rem">🧱</span><h1>Writing Word Bank</h1></div>
+  <div class="crumbs" id="crumbs"></div>
+</header>
+<main id="main"></main>
+<footer>Built for the children of Millhouse Primary School &mdash; tap a brick to build the wall down to the words you need.<br><button class="tzlink" id="tzOpen">Teacher Zone</button></footer>
+<div id="tzOverlay" class="tzoverlay" style="display:none"></div>
+<div id="printArea"></div>
+
+<script>
+const STAGES = [["KS1","Years 1–2"],["LKS2","Years 3–4"],["UKS2","Years 5–6"]];
+const KS1_CLASSES = new Set(["nouns","verbs","adjectives","adverbs","conjunctions"]);
+const TOPIC_ONLY_STAGE = { dahl:'LKS2', disasters:'LKS2', anglosaxons:'LKS2', mayans:'LKS2', romans:'LKS2', stoneage:'LKS2', ww2:'UKS2',
+  catboxes:'KS1', meerkatmail:'KS1', gunpowder:'KS1', sicksimon:'KS1', armitage:'KS1', nightingale:'KS1', seacole:'KS1', school:'KS1', moana:'KS1', grannypirate:'KS1', paperbag:'KS1',
+  twits:'LKS2', boydragons:'LKS2', ironman:'LKS2', ug:'LKS2', harleyhitch:'LKS2', juliuszebra:'LKS2', monsterslayer:'LKS2', malamander:'LKS2', explorer:'LKS2', loki:'LKS2',
+  beetleboy:'UKS2', nowhereemporium:'UKS2', skyfalls:'UKS2', piano:'UKS2', annefrank:'UKS2', highwayman:'UKS2', alma:'UKS2', holes:'UKS2', nightbushero:'UKS2' };
+const T = {
+  castles:["Castles",{
+    nouns:[["castle",0],["king",0],["queen",0],["knight",0],["tower",0],["moat",0],["crown",0],["dragon",0],["shield",0],["sword",0],["portcullis",1],["drawbridge",1],["turret",1],["banner",1],["courtyard",1],["dungeon",1],["rampart",1],["armour",1],["fortress",2],["battlement",2],["monarch",2],["catapult",2],["barricade",2]], verbs:[["guard",0],["fight",0],["march",0],["climb",0],["defend",0],["rule",0],["watch",0],["build",0],["charge",0],["protect",0],["surround",1],["hoist",1],["siege",1],["patrol",1],["conquer",1],["storm",1],["besiege",2],["fortify",2],["surrender",2],["breach",2],["infiltrate",2],["reinforce",2],["command",2]], adjectives:[["grand",0],["stone",0],["tall",0],["brave",0],["strong",0],["ancient",0],["royal",0],["heavy",0],["golden",0],["dark",0],["imposing",1],["fortified",1],["majestic",1],["towering",1],["gloomy",1],["sturdy",1],["impenetrable",1],["formidable",2],["medieval",2],["decaying",2],["stone-built",2]], adverbs:[["bravely",0],["quietly",0],["proudly",0],["slowly",0],["quickly",0],["loudly",0],["fiercely",0],["safely",0],["boldly",0],["calmly",0],["silently",1],["cautiously",1],["swiftly",1],["vigilantly",1],["nobly",1],["sternly",1],["heavily",1],["valiantly",2],["defiantly",2],["relentlessly",2],["strategically",2],["heroically",2],["treacherously",2]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1],["behind the portcullis",2],["atop the battlements",2],["within the dungeon",2],["beneath the drawbridge",2],["around the moat",2],["beyond the gatehouse",2],["inside the courtyard",2],["along the parapet",2],["above the turrets",2],["across the drawbridge",2]], similes:[["as strong as an ox",1],["towering like a stone giant",1],["gleaming like polished gold",1],["as cold as ancient stone",1],["standing like a silent guard",1],["as sharp as a broadsword",1],["heavy as an iron anchor",1],["swift as a flying arrow",1],["dark as a pitch-black dungeon",1],["dashing like a noble knight",1],["like a giant of stone standing guard",2],["as impenetrable as a mountain peak",2],["like a silent sentinel against the sky",2],["as cold as ancient granite",2],["like an iron fortress frozen in time",2],["as dark as the deepest cavern",2],["like a crown resting on the hilltop",2],["as solid as bedrock",2],["like a shadow overlooking the realm",2],["as sharp as a knight's lance",2]], metaphors:[["a fortress of solid rock",1],["a wall of iron courage",1],["the castle was a sleeping beast",1],["a sea of polished shields",1],["the moat was a liquid barrier",1],["a crown of stone towers",1],["an ocean of waving banners",1],["a thunder of galloping hooves",1],["the courtyard was a hive of activity",1],["a blanket of thick fog",1],["a sleeping giant of stone",2],["an iron cage of history",2],["the heart of the kingdom",2],["a shield against the wilderness",2],["a mountain carved by human hands",2],["a monument of ancient power",2],["a silent warden of the hills",2],["the crown of the valley",2],["a fortress forged in fire",2],["a testament to timeless glory",2]], fronted:[["High above the moat,",1],["Behind the stone walls,",1],["Without warning,",1],["Inside the gloomy dungeon,",1],["At dusk,",1],["Across the courtyard,",1],["Before sunrise,",1],["With swords drawn,",1],["Beyond the thick gates,",1],["During the siege,",1],["Beyond the ancient walls,",2],["High above the courtyard,",2],["Deep inside the dungeon,",2],["Through the heavy mist,",2],["Under the cover of darkness,",2],["With fierce determination,",2],["Across the treacherous moat,",2],["At the break of dawn,",2],["Beside the stone turrets,",2]], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0],["although",1],["while",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1],["whenever",2],["however",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The ancient walls stood guard over the land.",2],["The heavy drawbridge groaned under the weight.",2],["History whispered from the stone corridors.",2],["The fortress glared fiercely at its attackers.",2],["The turrets reached up to touch the clouds.",2],["The dungeon swallowed the light of day.",2],["The iron portcullis bared its heavy teeth.",2],["Shadows crept along the dark parapets.",2],["The castle stood proud against the storm.",2],["Time had left its mark upon the grey stones.",2]]
+  }],
+  monsters:["Monsters",{
+    nouns:[["monster",0],["fang",0],["claw",0],["tail",0],["fur",0],["beast",0],["cave",0],["horn",0],["roar",0],["footprint",0],["creature",1],["scales",1],["cavern",1],["shadow",1],["horns",1],["abomination",2],["hydra",2],["serpent",2],["claws",2],["spectre",2],["gargoyle",2],["monstrosity",2]], verbs:[["stomp",0],["growl",0],["pounce",0],["hide",0],["chase",0],["snarl",0],["creep",0],["leap",0],["scare",0],["roar",0],["lurk",1],["slither",1],["devour",1],["crouch",1],["stalk",1],["scuttle",1],["terrorize",2],["shriek",2],["bellow",2],["dismember",2],["transform",2]], adjectives:[["hairy",0],["scary",0],["huge",0],["green",0],["spiky",0],["friendly",0],["wild",0],["sharp",0],["slimy",0],["spooky",0],["ferocious",1],["monstrous",1],["scaly",1],["hideous",1],["gigantic",1],["venomous",1],["creepy",1],["savage",1],["terrifying",1],["enormous",1],["grotesque",2],["fearsome",2],["ravenous",2],["unearthly",2]], adverbs:[["loudly",0],["wildly",0],["hungrily",0],["scarily",0],["secretly",0],["suddenly",0],["silently",0],["clumsily",0],["fiercely",0],["quietly",0],["ferociously",1],["stealthily",1],["threateningly",1],["mysteriously",1],["heavily",1],["viciously",1],["fearfully",1],["menacingly",2],["ruthlessly",2],["savagely",2],["unpredictably",2],["horrifically",2],["eerily",2]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1],["beneath the surface",2],["lurking in shadows",2],["under the bed",2],["within the abyss",2],["behind the crimson curtain",2],["deep inside the lair",2],["beyond human sight",2],["amidst the thick fog",2],["near the jagged rocks",2],["over the slithering tail",2]], similes:[["as ferocious as a hungry lion",1],["eyes glowing like hot coals",1],["teeth sharp as razor blades",1],["skin as rough as sandpaper",1],["moving like a striking cobra",1],["roaring like distant thunder",1],["as heavy as a boulder",1],["feet stomp like earthquakes",1],["scaly as a dragon",1],["as mysterious as the dark night",1],["like a nightmare given form",2],["as sharp as obsidian daggers",2],["like thunder crashing through the night",2],["as silent as a creeping shadow",2],["like a storm of rage and destruction",2],["as cold as death",2],["like venom dripping from iron fangs",2],["as ancient as forgotten centuries",2],["like a phantom in the fog",2],["as fierce as a raging fire",2]], metaphors:[["a mountain of green scales",1],["a shadow in the moonlight",1],["the cave was a dragon's lair",1],["a furnace of fiery breath",1],["a machine of destruction",1],["its claws were steel daggers",1],["a nightmare in the dark",1],["its eyes were burning fires",1],["a tide of endless hunger",1],["a monster of pure terror",1],["a walking thunderstorm",2],["the shadow of pure terror",2],["an engine of destruction",2],["an abyss of endless hunger",2],["a nightmare made of scales and ash",2],["the phantom of the forest",2],["a fury forged in darkness",2],["a living avalanche",2],["the spirit of ancient chaos",2],["a beast of living shadow",2]], fronted:[["Deep within the shadowy cave,",1],["Without a sound,",1],["With sharp gleaming claws,",1],["Under the cover of darkness,",1],["Suddenly,",1],["From the misty swamp,",1],["In the blink of an eye,",1],["With a terrifying roar,",1],["Behind the jagged rocks,",1],["All of a sudden,",1],["From the shadows,",2],["With a blood-curdling roar,",2],["Deep within the lair,",2],["Without making a sound,",2],["Underneath the murky water,",2],["With razor-sharp claws extended,",2],["Through the eerie darkness,",2],["Before anyone could react,",2],["High in the jagged caverns,",2]], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0],["although",1],["while",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1],["whenever",2],["however",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["Fear walked alongside the creature.",2],["The monster's roar shook the earth's foundations.",2],["The shadow hungrily devoured the light.",2],["Darkness hid the creature in its dark cape.",2],["Night trembled at the beast's approach.",2],["The cavern breathed out a icy draft.",2],["Danger lurked around every corner.",2],["The forest cowered beneath its heavy steps.",2],["Malice dripped from its yellow teeth.",2],["The storm raged in harmony with its wrath.",2]]
+  }],
+  forests:["Forests",{
+    nouns:[["tree",0],["leaf",0],["wood",0],["owl",0],["fox",0],["path",0],["branch",0],["nest",0],["moss",0],["stream",0],["canopy",1],["trunk",1],["foliage",1],["woodland",1],["bough",1],["clearing",1],["undergrowth",1],["timber",1],["roots",1],["thicket",2],["sapling",2],["bramble",2]], verbs:[["rustle",0],["explore",0],["wander",0],["shelter",0],["whisper",0],["climb",0],["grow",0],["fall",0],["gather",0],["search",0],["sway",1],["tangle",1],["bloom",1],["sprout",1],["tower",1],["echo",1],["creak",1],["flourish",2],["entangle",2],["loom",2],["decay",2],["shatter",2]], adjectives:[["tall",0],["leafy",0],["green",0],["shady",0],["quiet",0],["woody",0],["dense",0],["fresh",0],["wild",0],["hidden",0],["misty",1],["ancient",1],["lush",1],["enchanted",1],["towering",1],["overgrown",1],["peaceful",1],["wooded",1],["gloomy",2],["verdant",2],["shadowy",2],["tangled",2],["tranquil",2],["mystical",2]], adverbs:[["quietly",0],["softly",0],["gently",0],["carefully",0],["deeply",0],["peacefully",0],["slowly",0],["silently",0],["closely",0],["calmly",0],["densely",1],["mysteriously",1],["continuously",1],["wildly",1],["unbrokenly",2],["eerily",2]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1],["amidst the ancient oaks",2],["beneath the leafy canopy",2],["deep within the thicket",2],["across the forest floor",2],["among the tangled roots",2],["near the babbling brook",2],["through the dense brush",2],["under the towering pines",2],["beyond the sunny clearing",2],["along the mossy path",2]], similes:[["tall as a sky-scraper",1],["leaves whispering like old secrets",1],["as green as an emerald",1],["roots twisted like thick snakes",1],["quiet as a sleeping mouse",1],["bark as rough as tree skin",1],["as dense as a jungle wall",1],["sunlight filtering like golden thread",1],["wind howling like a lonely wolf",1],["as fresh as morning dew",1],["like an emerald ceiling overhead",2],["as dense as a woven carpet",2],["like ancient green pillars",2],["as quiet as a forgotten tomb",2],["like a sea of rustling leaves",2],["as wild as untamed nature",2],["like shadows dancing in the moonlight",2],["as thick as a fortress wall",2],["like a maze of twisted boughs",2],["as soft as moss beneath your feet",2]], metaphors:[["an ocean of green leaves",1],["the forest was a giant umbrella",1],["a carpet of soft moss",1],["a roof of intertwined branches",1],["the trees were ancient guardians",1],["a labyrinth of wooden trunks",1],["a sea of fluttering leaves",1],["the woodland was a quiet sanctuary",1],["a blanket of golden autumn leaves",1],["nature's green cathedral",1],["the lungs of the earth",2],["a green labyrinth of secrets",2],["a cathedral of ancient trees",2],["a tapestry woven with leaves",2],["the kingdom of silence",2],["a living ocean of timber",2],["the vault of forgotten legends",2],["a blanket of emerald shade",2],["a sanctuary of shadows",2],["a symphony of rustling leaves",2]], fronted:[["Deep in the heart of the forest,",1],["Beneath the emerald canopy,",1],["Among the twisting roots,",1],["High up in the boughs,",1],["Through the thick fog,",1],["On the mossy forest floor,",1],["At early dawn,",1],["Without a rustle,",1],["Near the quiet clearing,",1],["In the cool shade,",1],["Deep within the woods,",2],["Beneath the towering canopy,",2],["Through the tangled branches,",2],["As dusk descended,",2],["High above the forest floor,",2],["In the quiet clearing,",2],["Among the rustling leaves,",2],["Without a breeze stirring,",2],["Far beyond the woodland trail,",2],["Under the cover of moss,",2]], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0],["although",1],["while",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1],["whenever",2],["however",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["Ancient trees whispered secrets to the wind.",2],["The forest welcomed travelers into its arms.",2],["Branches reached out like desperate fingers.",2],["Leaves sang a gentle song in the breeze.",2],["The wood stood guard over the wild animals.",2],["Shadows played hide and seek among the oaks.",2],["The forest floor slept beneath a blanket of leaves.",2],["The woodland breathed with continuous life.",2],["Twilight wrapped the trees in a cloak of grey.",2],["Roots gripped the soil with fierce devotion.",2]]
+  }],
+  rainforests:["Rainforests",{
+    nouns:[["jungle",0],["canopy",0],["parrot",0],["snake",0],["vine",0],["frog",0],["river",0],["jaguar",0],["monkey",0],["rain",0],["vines",1],["waterfall",1],["toucan",1],["humidity",1],["orchid",1],["understory",1],["riverbank",1],["layer",1],["biodiversity",2],["vegetation",2],["tributary",2],["predator",2],["flora",2],["fauna",2],["ecosystem",2]], verbs:[["swing",0],["drip",0],["slither",0],["flutter",0],["splash",0],["climb",0],["hide",0],["crawl",0],["echo",0],["flow",0],["flourish",1],["croak",1],["cascade",1],["drizzle",1],["tangle",1],["roam",1],["thrive",1],["teem",2],["sustain",2],["meander",2],["shelter",2],["emerge",2]], adjectives:[["tropical",0],["humid",0],["dense",0],["colourful",0],["bright",0],["wet",0],["warm",0],["lush",0],["exotic",0],["noisy",0],["vibrant",1],["teeming",1],["steamy",1],["damp",1],["enormous",1],["impenetrable",2],["sultry",2],["abundant",2]], adverbs:[["swiftly",0],["brightly",0],["damply",0],["wildly",0],["smoothly",0],["quietly",0],["noisily",0],["high",0],["deeply",0],["fast",0],["vibrantly",1],["humidly",1],["continuously",1],["silently",1],["exotically",1],["relentlessly",2],["abundantly",2],["vividly",2],["fiercely",2],["mysteriously",2],["softly",2],["rapidly",2]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1],["beneath the wet canopy",2],["along the winding river",2],["deep inside the jungle",2],["among the twisting vines",2],["under the heavy rainfall",2],["through the dense undergrowth",2],["above the jungle floor",2],["near the cascading waterfall",2],["across the emerald foliage",2],["within the humid air",2]], similes:[["as colourful as a rainbow",1],["vines dangling like long ropes",1],["rain falling like a heavy curtain",1],["as humid as a warm bath",1],["swift as a hunting jaguar",1],["bright as a blooming flower",1],["croaking like a chorus of frogs",1],["green as a shiny emerald",1],["river winding like a giant snake",1],["loud as a thunderclap",1],["like an ocean of vibrant green",2],["as hot and muggy as a sauna",2],["like torrential waterfalls from heaven",2],["as colourful as a painter's palette",2],["like a chorus of wild creatures",2],["as dense as a solid wall",2],["like liquid gold reflecting in the stream",2],["as delicate as an orchid",2],["like a snake slithering through roots",2],["as vast as an uncharted continent",2]], metaphors:[["a emerald paradise",1],["the jungle was a green maze",1],["a carpet of fallen orchids",1],["the waterfall was a silver ribbon",1],["a symphony of tropical sound",1],["the rainforest is the lungs of the Earth",1],["a sea of exotic wildlife",1],["a wall of dense foliage",1],["a fortress of giant trees",1],["a green treasure trove",1],["the emerald heartbeat of the planet",2],["a living tapestry of wildlife",2],["a greenhouse of ancient wonders",2],["a treasure trove of nature",2],["a river of endless life",2],["a fortress of lush green",2],["the ceiling of the tropical world",2],["a cauldron of damp warmth",2],["a kingdom of endless rain",2],["an orchestra of wild calls",2]], fronted:[["High up in the rainforest canopy,",1],["Through the tangled vines,",1],["Beside the roaring waterfall,",1],["Deep within the steamy jungle,",1],["During a heavy downpour,",1],["Underneath the broad leaves,",1],["Along the muddy riverbank,",1],["In the misty morning air,",1],["Without warning,",1],["Far beneath the treetops,",1],["High up in the canopy,",2],["Through the steamy mist,",2],["Deep within the jungle,",2],["As torrential rain poured down,",2],["Amidst the vibrant blossoms,",2],["Beneath the emerald leaves,",2],["Far beneath the sunny sky,",2],["In the heart of the tropics,",2]], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0],["although",1],["while",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1],["whenever",2],["however",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The jungle buzzed with frantic energy.",2],["Vines choked the ancient tree trunks.",2],["Rain washed the face of the tropical forest.",2],["The canopy shielded the earth from the harsh sun.",2],["The river meandered lazily through the valley.",2],["The jungle spoke in a thousand wild voices.",2],["Humidity hung heavily like a warm damp blanket.",2],["Flowers showed off their brilliant gowns.",2],["Nature thrived in every dripping corner.",2],["The forest embraced the warm monsoon.",2]]
+  }],
+  fantasy:["Fantasy",{
+    nouns:[["wizard",0],["fairy",0],["magic",0],["potion",0],["spell",0],["wand",0],["unicorn",0],["giant",0],["dragon",0],["treasure",0],["kingdom",1],["portal",1],["realm",1],["crystal",1],["sorcerer",2],["enchantment",2],["talisman",2],["prophecy",2],["elixir",2],["spellbook",2],["artifact",2]], verbs:[["fly",0],["sparkle",0],["vanish",0],["grant",0],["cast",0],["glow",0],["wish",0],["float",0],["transform",0],["soar",0],["enchant",1],["shimmer",1],["summon",1],["beam",1],["conjure",1],["illuminate",2],["banish",2],["transmute",2],["resonate",2]], adjectives:[["magical",0],["enchanted",0],["sparkly",0],["mysterious",0],["secret",0],["glowing",0],["tiny",0],["giant",0],["golden",0],["bright",0],["mystical",1],["wondrous",1],["invisible",1],["sparkling",1],["mythical",1],["dazzling",1],["ethereal",2],["legendary",2],["spellbinding",2],["supernatural",2],["celestial",2],["arcane",2],["immortal",2]], adverbs:[["magically",0],["gently",0],["mysteriously",0],["brightly",0],["suddenly",0],["softly",0],["swiftly",0],["wonderfully",0],["quietly",0],["happily",0],["instantly",1],["wondrously",1],["silently",1],["curiously",1],["dazzlingly",1],["gracefully",1],["effortlessly",2],["radiantly",2],["instantaneously",2],["brilliantly",2]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1],["beyond the realm of reality",2],["through the shimmering portal",2],["within the enchanted crystal",2],["across the glowing horizon",2],["beneath the ancient rune",2],["atop the floating island",2],["inside the wizard's tower",2],["among the mystical stars",2],["under the spell's protection",2],["around the magic circle",2]], similes:[["glowing like a starlight beam",1],["as mysterious as an ancient spell",1],["disappearing like smoke in the wind",1],["sparkling like polished diamonds",1],["soaring like a majestic phoenix",1],["as magical as a dream",1],["clear as a magic crystal",1],["swift as a shooting star",1],["bright as a glowing orb",1],["as rare as a dragon's egg",1],["like stars scattered across the night",2],["as bright as a blazing supernova",2],["like liquid light flowing through veins",2],["as mysterious as an ancient riddle",2],["like whispers from another dimension",2],["as swift as a phoenix on the wing",2],["like magic swirling in the breeze",2],["as cold as a frozen star",2],["like a shimmering mirage in the sky",2],["as pure as starlight",2]], metaphors:[["a world of infinite magic",1],["the wand was a rod of light",1],["a river of liquid stardust",1],["the portal was a gateway to dreams",1],["a sea of shimmering magic",1],["the dragon was a flying furnace",1],["a blanket of starry darkness",1],["the spell was a sudden thunderstorm",1],["a kingdom of sparkling crystals",1],["a tapestry of mystical legends",1],["a tapestry woven with magic",2],["a gateway to infinite possibilities",2],["a beacon in the dark abyss",2],["the spark of creation",2],["an ocean of stardust",2],["a world reborn from dreams",2],["the pulse of ancient power",2],["a river of pure energy",2],["the crown of eternity",2],["a symphony of spells",2]], fronted:[["With a wave of the magic wand,",1],["Inside the enchanted realm,",1],["Through the glowing portal,",1],["In a flash of bright light,",1],["Beyond the mystical mountains,",1],["As the spell took hold,",1],["Deep inside the wizard's tower,",1],["Without making a sound,",1],["Under the starry night sky,",1],["In a magical instant,",1],["With a flash of brilliant light,",2],["Beyond the mortal realm,",2],["Through the shimmering doorway,",2],["As the ancient spell was spoken,",2],["High above the floating clouds,",2],["Deep within the crystal cave,",2],["Without a moment's hesitation,",2],["Under the celestial moon,",2],["With boundless power,",2],["In the heart of the kingdom,",2]], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0],["although",1],["while",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1],["whenever",2],["however",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["Magic pulsed softly in the wizard's palm.",2],["The ancient spellbook whispered forgotten truths.",2],["Stars danced in celebration above the realm.",2],["The portal beckoned travelers across dimensions.",2],["Destiny summoned the young hero forward.",2],["Shadows fled from the magic torchlight.",2],["The crystal sang with divine power.",2],["Time bent its rules within the enchanted wood.",2],["The mountain slept under an ancient spell.",2],["Wind carried tales of ancient dragons.",2]]
+  }],
+  beaches:["Beaches",{
+    nouns:[["sand",0],["shell",0],["sea",0],["wave",0],["bucket",0],["spade",0],["crab",0],["rockpool",0],["pebble",0],["towel",0],["sandcastle",1],["seashell",1],["tide",1],["shoreline",1],["dune",1],["driftwood",1],["coast",1],["seagull",1],["coastline",2],["horizon",2],["foam",2]], verbs:[["dig",0],["splash",0],["swim",0],["build",0],["collect",0],["float",0],["puddle",0],["wash",0],["search",0],["relax",0],["crash",1],["glisten",1],["gather",1],["submerge",1],["drift",1],["burrow",1],["carve",1],["ripple",1],["recede",2],["gargle",2],["scatter",2],["erode",2],["accumulate",2]], adjectives:[["sandy",0],["sunny",0],["warm",0],["salty",0],["wet",0],["golden",0],["smooth",0],["clear",0],["shell-covered",0],["bright",0],["coastal",1],["breezy",1],["sunlit",1],["shallow",1],["pebbly",1],["refreshing",1],["scenic",1],["tranquil",1],["sun-drenched",2],["picturesque",2],["glistening",2],["endless",2],["saline",2]], adverbs:[["happily",0],["brightly",0],["gently",0],["warmly",0],["calmly",0],["carefully",0],["joyfully",0],["softly",0],["cheerfully",0],["safely",0],["rhythmically",1],["continuously",1],["peacefully",1],["playfully",1],["lazily",1],["endlessly",2]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1],["along the sandy shore",2],["beneath the glistening waves",2],["across the vast horizon",2],["upon the golden sand",2],["near the crashing tide",2],["under the blazing sun",2],["beside the tide pools",2],["over the shifting dunes",2],["beyond the breakers",2],["among the scattered shells",2]], similes:[["sand as golden as sunlight",1],["waves crashing like thunder",1],["seashells sparkling like small gems",1],["as soft as powder",1],["sea smooth as a glass mirror",1],["water refreshing as a cold drink",1],["driftwood smooth as polished bone",1],["gulls crying like loud whistles",1],["as warm as a summer blanket",1],["tide rolling like a gentle wheel",1],["like grains of liquid gold",2],["as clear as polished crystal",2],["like a mirror reflecting the sky",2],["as warm as a soft wool blanket",2],["like white foam dancing on water",2],["as calm as a sleeping child",2],["like diamonds sparkling in the sun",2],["as vast as the open ocean",2],["like a ribbon of golden sand",2],["as soft as powder underfoot",2]], metaphors:[["a blanket of golden sand",1],["the ocean was a liquid mirror",1],["a treasure chest of sea shells",1],["the beach was a sunlit playground",1],["a ribbon of foam along the shore",1],["the sun was a blazing gold coin",1],["a sea of sparkling water",1],["the tide was a rhythmic drum",1],["a fortress of sandcastles",1],["nature's sandy carpet",1],["a golden ribbon along the edge of the sea",2],["a carpet of sunlit grains",2],["a mirror for the heavens",2],["the boundary between land and sky",2],["a treasure chest of shells",2],["the edge of the infinite blue",2],["an arena of waves and wind",2],["a symphony of crashing surf",2],["a haven of warm stillness",2],["a canvas painted by the ocean",2]], fronted:[["Along the golden shoreline,",1],["Beside the crashing waves,",1],["Under the warm sunshine,",1],["High above the sandy dunes,",1],["As the tide rolled in,",1],["Across the soft sand,",1],["In the shallow rock pools,",1],["With every passing wave,",1],["Near the wooden pier,",1],["On a breezy afternoon,",1],["Beneath the mid-day sun,",2],["Across the sparkling water,",2],["In the warmth of the breeze,",2],["Far out on the horizon,",2],["With every crashing wave,",2],["Beside the scattered driftwood,",2],["Underneath the soft sand,",2],["At the edge of the water,",2]], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0],["although",1],["while",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1],["whenever",2],["however",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["Waves caressed the golden shoreline.",2],["The ocean reached out to touch the sand.",2],["Sunlight played tag across the rippling water.",2],["The sea sang a soothing lullaby.",2],["The shore welcomed the returning tide.",2],["Wind danced across the shifting dunes.",2],["The horizon stretched its lazy arms.",2],["Foam giggled as it tickled the pebbles.",2],["The sun smiled down on the peaceful bay.",2],["The beach soaked up the summer heat.",2]]
+  }],
+  seaside:["Seaside Towns",{
+    nouns:[["pier",0],["harbour",0],["boat",0],["seagull",0],["ice cream",0],["lighthouse",0],["promenade",0],["shop",0],["bench",0],["dock",0],["arcade",1],["deckchair",1],["souvenir",1],["esplanade",1],["breakwater",1],["lifeboat",1],["marina",2]], verbs:[["sail",0],["walk",0],["stroll",0],["visit",0],["glide",0],["eat",0],["enjoy",0],["watch",0],["buy",0],["ride",0],["anchor",1],["shelter",1],["guide",1],["flock",1],["display",1],["overlook",1],["dock",1],["explore",1],["frequent",1],["bustle",2],["echo",2],["illuminate",2],["navigate",2],["gather",2]], adjectives:[["busy",0],["coastal",0],["breezy",0],["lively",0],["salty",0],["bright",0],["picturesque",0],["welcoming",0],["noisy",0],["crowded",0],["bustling",1],["maritime",1],["windy",1],["historic",1],["colourful",1],["cheerful",1],["vibrant",2],["quaint",2],["traditional",2],["charming",2]], adverbs:[["lively",0],["breezily",0],["cheerfully",0],["happily",0],["loudly",0],["busy",0],["swiftly",0],["pleasantly",0],["safely",0],["warmly",0],["bustlingly",1],["noisily",1],["scenically",1],["briskly",1],["continuously",1],["frequently",1],["scent-fully",2],["brightly",2],["traditionally",2],["eagerly",2],["joyfully",2]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1],["along the busy promenade",2],["at the end of the wooden pier",2],["overlooking the picturesque harbour",2],["beside the glowing arcade",2],["near the rocky cliffs",2],["across the bustling marina",2],["under the screeching seagulls",2],["around the colourful gift shops",2],["upon the windy esplanade",2],["behind the historic lighthouse",2]], similes:[["as busy as a beehive",1],["lighthouse standing like a giant beacon",1],["boats bobbing like plastic corks",1],["arcade lights flashing like fireworks",1],["as colourful as a postcard",1],["cheerful as a sunny day",1],["streets buzzing like a crowded market",1],["cliffs steep as a high wall",1],["promenade long as a endless path",1],["sea breeze cool as an ice cream",1],["like a postcard brought to life",2],["as busy as a bustling beehive",2],["like colourful ribbons along the coast",2],["as bright as summer sunshine",2],["like a chorus of wheeling gulls",2],["as noisy as a carnival crowd",2],["like ships anchored in a calm haven",2],["as sweet as sticks of seaside rock",2],["like memories painted in pastel",2],["as timeless as the tide",2]], metaphors:[["a hive of holiday activity",1],["the harbour was a forest of boat masts",1],["a mosaic of colourful beach huts",1],["the pier was a wooden arm in the sea",1],["a sea of happy tourists",1],["the lighthouse was a glowing sentinel",1],["a treasure trove of seaside shops",1],["a carnival of bright lights",1],["the town was a coastal gem",1],["a postcard of summer fun",1],["a jewel on the coast",2],["a vibrant hive of holidaymakers",2],["the doorway to the ocean",2],["a beacon of coastal history",2],["a sanctuary for weary sailors",2],["a stage set for summer dreams",2],["a bustling harbour of memories",2],["the heart of the seaside",2],["a tapestry of waves and light",2]], fronted:[["Along the busy promenade,",1],["At the end of the long pier,",1],["High in the historic lighthouse,",1],["Down by the noisy harbour,",1],["During the summer holidays,",1],["Across the cobblestone streets,",1],["Beside the colourful arcade,",1],["With boats anchored in the bay,",1],["From the top of the cliffs,",1],["In the heart of the coastal town,",1],["Along the lively promenade,",2],["High atop the chalk cliffs,",2],["At the very tip of the pier,",2],["As seagulls swooped overhead,",2],["In the heart of the harbour,",2],["Across the sunlit bay,",2],["With the smell of salty air,",2],["Beside the humming arcades,",2],["During the peak of summer,",2],["Overlooking the calm water,",2]], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0],["although",1],["while",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1],["whenever",2],["however",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The lighthouse stood tall, watching over the bay.",2],["The town bustled with summer excitement.",2],["Seagulls laughed aloud in the salty breeze.",2],["The pier stretched its long legs into the ocean.",2],["Music spilled out from the arcade doors.",2],["The harbour sheltered boats in its safe arms.",2],["Colourful beach huts brightened up the shore.",2],["The sea breeze whispered secrets of distant lands.",2],["The town slept soundly as winter arrived.",2],["Sunbeams warmed the wooden promenade.",2]]
+  }],
+  disasters:["Natural Disasters",{
+    nouns:[["earthquake",1],["volcano",1],["tsunami",1],["hurricane",1],["avalanche",1],["tremor",1],["eruption",1],["flood",1],["tornado",1],["magma",1]], verbs:[["shatter",1],["erupt",1],["overflow",1],["destroy",1],["tremble",1],["collapse",1],["sweep",1],["rage",1],["submerge",1],["threaten",1]], adjectives:[["destructive",1],["catastrophic",1],["violent",1],["raging",1],["uncontrollable",1],["devastating",1],["dangerous",1],["fierce",1],["chaotic",1],["terrifying",1]], adverbs:[["violently",1],["ferociously",1],["suddenly",1],["uncontrollably",1],["destructively",1],["wildly",1],["rapidly",1],["fiercely",1],["horrificly",1],["powerfully",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["ground shaking like a rattling tray",1],["volcano erupting like a giant fountain",1],["flood sweeping like a dark monster",1],["wind howling like a ferocious beast",1],["as destructive as a wrecking ball",1],["snow falling like a mountain tumbling down",1],["thunder roaring like a pride of lions",1],["as chaotic as a stormy sea",1],["earth cracking like brittle glass",1],["waves high as a sky-scraper",1]], metaphors:[["a wave of total destruction",1],["the volcano was a fiery dragon",1],["a river of liquid fire",1],["the hurricane was a spinning monster",1],["the earthquake was a shaking giant",1],["a sea of raging water",1],["a wall of falling snow",1],["a nightmare of nature's power",1],["the tornado was a swirling tower",1],["a curtain of relentless rain",1]], fronted:[["Without any warning,",1],["During the violent earthquake,",1],["High above the erupting volcano,",1],["As the floodwaters rose,",1],["In the wake of the hurricane,",1],["With immense power,",1],["Across the devastated land,",1],["Suddenly,",1],["From the roaring tornado,",1],["Deep below the Earth's surface,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  anglosaxons:["Anglo-Saxons",{
+    nouns:[["warrior",1],["settlement",1],["shield",1],["thatch",1],["village",1],["runes",1],["helmet",1],["kingdom",1],["monk",1],["invasion",1]], verbs:[["settle",1],["invade",1],["forge",1],["weave",1],["harvest",1],["protect",1],["conquer",1],["craft",1],["shelter",1],["trade",1]], adjectives:[["wooden",1],["courageous",1],["historic",1],["handcrafted",1],["rural",1],["fierce",1],["Anglo-Saxon",1],["ancient",1],["sturdy",1],["brave",1]], adverbs:[["courageously",1],["skilfully",1],["fiercely",1],["historically",1],["bravely",1],["traditionally",1],["handily",1],["firmly",1],["loyally",1],["proudly",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["warriors brave as lions",1],["shields round as the full moon",1],["helmets gleaming like polished steel",1],["swords sharp as ice",1],["settlements quiet as a sleeping village",1],["as sturdy as an oak timber",1],["runes carved fine as needlework",1],["craftsmen skilled as master builders",1],["hall warm as a roaring campfire",1],["as loyal as a trusted hound",1]], metaphors:[["a shield wall of unbroken iron",1],["the hall was the heart of the village",1],["a sea of Saxon helmets",1],["a tapestry of ancient history",1],["a fortress of wooden beams",1],["the king was a tower of strength",1],["a tide of fierce invaders",1],["a hearth of glowing embers",1],["iron courage in their hearts",1],["a web of trade and craft",1]], fronted:[["In the Anglo-Saxon settlement,",1],["With wooden shields held high,",1],["Long ago in ancient Britain,",1],["Around the roaring hearth,",1],["Before the fierce battle,",1],["Across the muddy fields,",1],["Inside the thatched hall,",1],["With skilled craftsmanship,",1],["During the cold winter months,",1],["Under the Saxon king's rule,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  dahl:["Roald Dahl – George's Marvellous Medicine",{
+    nouns:[["medicine",1],["saucepan",1],["mixture",1],["potion",1],["grandmother",1],["farmhouse",1],["ingredients",1],["froth",1],["spoon",1],["shed",1]], verbs:[["concoct",1],["bubble",1],["stir",1],["simmer",1],["steam",1],["swirl",1],["brew",1],["pour",1],["gulp",1],["shrink",1]], adjectives:[["marvellous",1],["bizarre",1],["frothy",1],["fiery",1],["revolting",1],["extraordinary",1],["steaming",1],["bubbling",1],["magical",1],["peculiar",1]], adverbs:[["mischievously",1],["eagerly",1],["carefully",1],["wildly",1],["rapidly",1],["curiously",1],["dramatically",1],["strangely",1],["secretly",1],["mysteriously",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["bubbling like a boiling cauldron",1],["steaming like a hot kettle",1],["fuming like a tiny volcano",1],["as revolting as rotten eggs",1],["mischievous as a cheeky monkey",1],["as bright as a neon light",1],["growing tall as a telephone pole",1],["fizzing like a cold soda",1],["as magic as a wizard's potion",1],["shrinking fast as a melting ice cube",1]], metaphors:[["a cauldron of chaotic magic",1],["the mixture was a volcano of froth",1],["a liquid miracle in a saucepan",1],["a storm of bizarre ingredients",1],["grandmother was a ticking time bomb",1],["a brew of pure mischief",1],["the kitchen was a mad scientist's lab",1],["a potion of fiery power",1],["a fountain of bubbling steam",1],["a potion of colossal size",1]], fronted:[["Inside the bubbling saucepan,",1],["With a mischievous grin,",1],["Deep in the dark medicine cabinet,",1],["Stirring the marvellous potion,",1],["All of a sudden,",1],["Without grandmother noticing,",1],["In the quiet kitchen,",1],["With one big gulp,",1],["Before the steam cleared,",1],["Around the old farmhouse,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  mayans:["The Mayans",{
+    nouns:[["pyramid",1],["temple",1],["maize",1],["calendar",1],["Chichen Itza",1],["priest",1],["glyph",1],["civilisation",1],["jade",1],["jungle",1]], verbs:[["worship",1],["calculate",1],["carve",1],["inscribe",1],["construct",1],["harvest",1],["observe",1],["flourish",1],["sacrifice",1],["decode",1]], adjectives:[["ancient",1],["sacred",1],["Mayan",1],["astronomical",1],["intricate",1],["stone",1],["tropical",1],["elaborate",1],["majestic",1],["historical",1]], adverbs:[["sacredly",1],["precisely",1],["astronomically",1],["intricately",1],["skilfully",1],["historically",1],["devoutly",1],["elaborately",1],["reverently",1],["anciently",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["pyramids tall as mountain peaks",1],["carvings intricate as fine lace",1],["jade green as jungle leaves",1],["astronomers precise as modern clocks",1],["as sacred as an ancient prayer",1],["maize yellow as bright sunshine",1],["temples grand as royal palaces",1],["glyphs mysterious as hidden riddles",1],["as enduring as solid stone",1],["jungle dense as a woven mat",1]], metaphors:[["a civilisation of stone and stars",1],["the pyramid was a stairway to the heavens",1],["a calendar of cosmic secrets",1],["jade was the blood of the earth",1],["the jungle was a green tomb for ancient ruins",1],["a city of soaring stone monuments",1],["maize was the gold of the Mayans",1],["a library written in stone glyphs",1],["the priests were guardians of time",1],["a beacon of ancient wisdom",1]], fronted:[["High atop the stone pyramid,",1],["Deep within the Mayan jungle,",1],["Using the complex ancient calendar,",1],["In the sacred temple,",1],["Carved carefully into stone,",1],["Thousands of years ago,",1],["Under the night sky,",1],["With intricate jade ornaments,",1],["During the maize harvest,",1],["Through ancient hieroglyphs,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  romans:["The Romans",{
+    nouns:[["centurion",1],["Colosseum",1],["chariot",1],["gladiator",1],["aqueduct",1],["mosaic",1],["emperor",1],["toga",1],["legion",1],["forum",1]], verbs:[["conquer",1],["march",1],["govern",1],["construct",1],["compete",1],["expand",1],["invade",1],["pave",1],["organize",1],["rule",1]], adjectives:[["Roman",1],["mighty",1],["organized",1],["imperial",1],["historic",1],["disciplined",1],["spacious",1],["armoured",1],["grand",1],["victorious",1]], adverbs:[["disciplinely",1],["victoriously",1],["mightily",1],["historically",1],["militarily",1],["grandly",1],["orderly",1],["fiercely",1],["proudly",1],["successfully",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["soldiers disciplined as clockwork",1],["chariots swift as racing wind",1],["Colosseum grand as a mountain arena",1],["aqueduct long as a winding river",1],["as mighty as the Roman Empire",1],["mosaic colourful as a painted picture",1],["swords sharp as eagle talons",1],["shields locked together like a solid wall",1],["as brave as a battle-hardened centurion",1],["toga white as freshly fallen snow",1]], metaphors:[["a machine of conquest and order",1],["the Emperor was the sun of Rome",1],["a wall of red shields",1],["the Colosseum was a stadium of thunderous cheers",1],["a river of marching soldiers",1],["Rome was the heart of the ancient world",1],["roads were the veins of the empire",1],["an iron grip on Europe",1],["a mosaic of diverse cultures",1],["a golden age of civilization",1]], fronted:[["Inside the grand Colosseum,",1],["Across the vast Roman Empire,",1],["Marching in strict formation,",1],["Along the paved stone road,",1],["By order of the Emperor,",1],["Under the heavy aqueduct,",1],["With gladiators in the arena,",1],["High upon the hill,",1],["In the busy forum,",1],["With iron discipline,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  stoneage:["The Stone, Bronze and Iron Ages",{
+    nouns:[["flint",1],["settlement",1],["bronze",1],["iron",1],["hillfort",1],["mammoth",1],["roundhouse",1],["smelting",1],["agriculture",1],["tribe",1]], verbs:[["knap",1],["smelt",1],["forage",1],["hunt",1],["settle",1],["weave",1],["hammer",1],["gather",1],["carve",1],["defend",1]], adjectives:[["prehistoric",1],["primitive",1],["metallic",1],["sturdy",1],["tribal",1],["ancient",1],["flint-edged",1],["rugged",1],["bronze",1],["iron",1]], adverbs:[["prehistorically",1],["primitively",1],["skilfully",1],["ruggedly",1],["anciently",1],["patiently",1],["heavily",1],["sharply",1],["tribally",1],["sturdily",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["flint sharp as a razor blade",1],["roundhouses sturdy as small hills",1],["iron strong as a anvil",1],["mammoth huge as a moving mountain",1],["foraging quiet as a sneaking fox",1],["smoke rising like grey ribbons",1],["tribes united as a single family",1],["as tough as a hunter's skin",1],["bronze gleaming like golden sunset",1],["life rough as untamed wilderness",1]], metaphors:[["the dawn of human history",1],["flint was the key to survival",1],["a stepping stone to modern invention",1],["hillforts were crowns upon the hills",1],["the fireplace was the pulse of the home",1],["a journey from stone to metal",1],["a web of prehistoric settlements",1],["nature was their sole provider",1],["an age forged in fire and iron",1],["a tapestry of ancient survival",1]], fronted:[["During the Stone Age,",1],["Inside the muddy roundhouse,",1],["With tools made of sharp flint,",1],["High upon the hillfort,",1],["Around the tribal campfire,",1],["Deep in the prehistoric era,",1],["By smelting melted metals,",1],["Across the open countryside,",1],["Before agriculture began,",1],["With iron weapons in hand,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["to prove that",1],["until",1],["before",1],["unless",1],["since",1],["so that",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  ww2:["WW2",{
+    nouns:[["evacuee",2],["rationing",2],["blitz",2],["air-raid shelter",2],["spitfire",2],["blackout",2],["propaganda",2],["infantry",2],["siren",2],["gas mask",2]], verbs:[["evacuate",2],["mobilize",2],["camouflage",2],["bombard",2],["surrender",2],["ration",2],["intercept",2],["shelter",2],["persevere",2],["conscript",2]], adjectives:[["devastating",2],["courageous",2],["bleak",2],["heroic",2],["resilient",2],["dilapidated",2],["perilous",2],["grim",2],["strategic",2],["unyielding",2]], adverbs:[["courageously",2],["desperately",2],["resiliently",2],["bravely",2],["anxiously",2],["heroically",2],["grimly",2],["stealthily",2],["urgently",2],["tirelessly",2]], prepositions:[["inside the cramped Anderson shelter",2],["during the terrifying blackout",2],["beneath the shattered roof",2],["across the war-torn landscape",2],["amidst the falling rubble",2],["under the searchlight beams",2],["beyond the frontlines",2],["near the sirens' blare",2],["within the underground station",2],["along the destroyed street",2]], similes:[["like searchlights cutting through the velvet sky",2],["as deafening as a thunderclap",2],["like shadows hiding in the dark blackout",2],["as brave as a lion in combat",2],["like a blanket of smoke over the city",2],["as sharp as the blare of a warning siren",2],["like fragile paper scattered by the wind",2],["as tense as a coiled spring",2],["like iron wills standing unbroken",2],["as cold as a concrete bunker",2]], metaphors:[["a city painted in shadows",2],["a battle for the soul of freedom",2],["a wall of unwavering courage",2],["the storm of war",2],["a symphony of sirens and anti-aircraft fire",2],["an ocean of hardship and resilience",2],["the darkest hour before dawn",2],["a furnace of bravery",2],["a testament to human spirit",2],["a landscape carved by conflict",2]], fronted:[["During the height of the Blitz,",2],["Through the darkness of the blackout,",2],["With courage in their hearts,",2],["Beneath the echoing sirens,",2],["Inside the damp Anderson shelter,",2],["Across the bomb-damaged city,",2],["Without warning,",2],["In the face of constant danger,",2],["Far away from home,",2],["As the Spitfires soared above,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["Sirens wailed in agony across the city.",2],["Darkness blanketed the streets during the blackout.",2],["Searchlights reached out into the night sky.",2],["Fear stalked the quiet underground stations.",2],["The ruined buildings stood as silent witnesses.",2],["Hope survived in the hearts of the evacuees.",2],["The city refused to break under the bombs.",2],["The sirens screamed their harsh warnings.",2],["Death flew silently through the night air.",2],["Courage shone brightly through the darkest hours.",2]]
+  }],
+  catboxes:["My Cat Hides in Boxes",{
+    nouns:[["cat",0],["box",0],["country",0],["hat",0],["suit",0],["flag",0],["tail",0],["whisker",0],["house",0],["garden",0]], verbs:[["hide",0],["jump",0],["sleep",0],["pounce",0],["curl",0],["climb",0],["travel",0],["chase",0],["stretch",0],["peek",0]], adjectives:[["cosy",0],["furry",0],["small",0],["clever",0],["playful",0],["cute",0],["soft",0],["wooden",0],["funny",0],["secret",0]], adverbs:[["snugly",0],["quietly",0],["softly",0],["quick",0],["cheerfully",0],["gently",0],["safely",0],["playfully",0],["happily",0],["neatly",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  meerkatmail:["Meerkat Mail",{
+    nouns:[["meerkat",0],["desert",0],["postcard",0],["sand",0],["family",0],["cactus",0],["tunnel",0],["pack",0],["letter",0],["adventure",0]], verbs:[["write",0],["travel",0],["explore",0],["dig",0],["post",0],["visit",0],["scout",0],["wander",0],["return",0],["search",0]], adjectives:[["hot",0],["sandy",0],["dry",0],["sunny",0],["busy",0],["warm",0],["favourite",0],["cozy",0],["faraway",0],["brave",0]], adverbs:[["eagerly",0],["safely",0],["warmly",0],["carefully",0],["happily",0],["slowly",0],["quick",0],["bravely",0],["daily",0],["deeply",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  gunpowder:["The Gunpowder Plot",{
+    nouns:[["king",0],["plot",0],["barrel",0],["cellar",0],["guard",0],["lantern",0],["fuse",0],["palace",0],["letter",0],["soldier",0]], verbs:[["plan",0],["hide",0],["guard",0],["stop",0],["discover",0],["search",0],["light",0],["escape",0],["warn",0],["protect",0]], adjectives:[["dark",0],["secret",0],["dangerous",0],["heavy",0],["quiet",0],["wooden",0],["scary",0],["brave",0],["royal",0],["hidden",0]], adverbs:[["secretly",0],["quietly",0],["darkly",0],["carefully",0],["bravely",0],["suddenly",0],["safely",0],["fearfully",0],["slowly",0],["silently",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  sicksimon:["Sick Simon",{
+    nouns:[["germ",0],["sneeze",0],["cough",0],["tissue",0],["soap",0],["doctor",0],["bed",0],["medicine",0],["virus",0],["hand",0]], verbs:[["wash",0],["spread",0],["rest",0],["cough",0],["sneeze",0],["cover",0],["clean",0],["heal",0],["stay",0],["help",0]], adjectives:[["sick",0],["unwell",0],["dirty",0],["clean",0],["warm",0],["tired",0],["tiny",0],["healthy",0],["soft",0],["careful",0]], adverbs:[["carefully",0],["gently",0],["slowly",0],["quietly",0],["properly",0],["well",0],["softly",0],["safely",0],["kindly",0],["often",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  armitage:["Mrs Armitage",{
+    nouns:[["bicycle",0],["wheel",0],["horn",0],["basket",0],["dog",0],["seat",0],["bell",0],["toolkit",0],["road",0],["trip",0]], verbs:[["ride",0],["add",0],["fix",0],["pedal",0],["steer",0],["attach",0],["upgrade",0],["travel",0],["zoom",0],["stop",0]], adjectives:[["bumpy",0],["clever",0],["helpful",0],["loud",0],["useful",0],["fast",0],["bright",0],["extra",0],["safe",0],["busy",0]], adverbs:[["quickly",0],["happily",0],["safely",0],["loudly",0],["cheerfully",0],["carefully",0],["smoothly",0],["eagerly",0],["brightly",0],["well",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  nightingale:["Florence Nightingale",{
+    nouns:[["lamp",0],["hospital",0],["nurse",0],["soldier",0],["bed",0],["bandage",0],["medicine",0],["ward",0],["light",0],["care",0]], verbs:[["help",0],["heal",0],["clean",0],["carry",0],["listen",0],["comfort",0],["wash",0],["work",0],["lead",0],["save",0]], adjectives:[["kind",0],["caring",0],["bright",0],["clean",0],["brave",0],["gentle",0],["helpful",0],["famous",0],["calm",0],["safe",0]], adverbs:[["kindly",0],["gently",0],["quietly",0],["carefully",0],["softly",0],["bravely",0],["calmly",0],["well",0],["safely",0],["peacefully",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  seacole:["Mary Seacole",{
+    nouns:[["herbs",0],["clinic",0],["hotel",0],["nurse",0],["medicine",0],["soldier",0],["journey",0],["doctor",0],["care",0],["herbalist",0]], verbs:[["cure",0],["travel",0],["treat",0],["cook",0],["help",0],["build",0],["comfort",0],["support",0],["save",0],["work",0]], adjectives:[["brave",0],["kind",0],["determined",0],["helpful",0],["warm",0],["famous",0],["strong",0],["caring",0],["clever",0],["generous",0]], adverbs:[["bravely",0],["kindly",0],["warmly",0],["carefully",0],["eagerly",0],["generously",0],["safely",0],["well",0],["helpfully",0],["boldly",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  school:["School",{
+    nouns:[["teacher",0],["pencil",0],["book",0],["desk",0],["classroom",0],["friend",0],["playground",0],["ruler",0],["paper",0],["lesson",0]], verbs:[["learn",0],["write",0],["read",0],["draw",0],["listen",0],["play",0],["count",0],["share",0],["think",0],["ask",0]], adjectives:[["bright",0],["busy",0],["quiet",0],["fun",0],["smart",0],["kind",0],["neat",0],["helpful",0],["favourite",0],["clear",0]], adverbs:[["quietly",0],["carefully",0],["neatly",0],["happily",0],["politely",0],["eagerly",0],["well",0],["loudly",0],["kindly",0],["clearly",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  moana:["Moana",{
+    nouns:[["ocean",0],["island",0],["boat",0],["wave",0],["sail",0],["paddle",0],["heart",0],["chief",0],["hook",0],["voyage",0]], verbs:[["sail",0],["explore",0],["restore",0],["swim",0],["navigate",0],["discover",0],["guide",0],["paddle",0],["save",0],["brave",0]], adjectives:[["deep",0],["blue",0],["brave",0],["strong",0],["tropical",0],["ancient",0],["magical",0],["warm",0],["daring",0],["bright",0]], adverbs:[["bravely",0],["swiftly",0],["boldly",0],["deeply",0],["safely",0],["calmly",0],["eagerly",0],["happily",0],["far",0],["proudly",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  grannypirate:["My Granny is A Pirate",{
+    nouns:[["granny",0],["pirate",0],["ship",0],["treasure",0],["map",0],["eyepatch",0],["parrot",0],["deck",0],["sea",0],["sword",0]], verbs:[["sail",0],["search",0],["steer",0],["find",0],["cheer",0],["climb",0],["explore",0],["roar",0],["dig",0],["wave",0]], adjectives:[["brave",0],["funny",0],["wild",0],["salty",0],["old",0],["daring",0],["secret",0],["golden",0],["noisy",0],["strong",0]], adverbs:[["bravely",0],["loudly",0],["wildly",0],["cheerfully",0],["boldly",0],["secretly",0],["happily",0],["swiftly",0],["safely",0],["eagerly",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  paperbag:["Paper Bag Princess",{
+    nouns:[["princess",0],["dragon",0],["paper bag",0],["castle",0],["prince",0],["fire",0],["cave",0],["crown",0],["clothes",0],["hero",0]], verbs:[["outsmart",0],["rescue",0],["fly",0],["wear",0],["chase",0],["trick",0],["save",0],["burn",0],["walk",0],["laugh",0]], adjectives:[["brave",0],["smart",0],["fiery",0],["tough",0],["clever",0],["strong",0],["burnt",0],["dirty",0],["proud",0],["kind",0]], adverbs:[["cleverly",0],["bravely",0],["boldly",0],["smartly",0],["calmly",0],["quietly",0],["proudly",0],["easily",0],["safely",0],["happily",0]], prepositions:[], similes:[], metaphors:[], fronted:[], conjunctions:[["and",0],["but",0],["so",0],["because",0],["when",0],["if",0],["or",0],["that",0],["even though",0],["as",0]], determiners:[], modalverbs:[], personification:[]
+  }],
+  twits:["The Twits",{
+    nouns:[["beard",1],["beard-crumbs",1],["prank",1],["hugger-mugger",1],["monkeys",1],["glue",1],["cage",1],["bird-pie",1],["worms",1],["house",1]], verbs:[["trick",1],["smuggle",1],["cackle",1],["stick",1],["tumble",1],["crouch",1],["giggle",1],["scream",1],["trap",1],["stretch",1]], adjectives:[["naughty",1],["peculiar",1],["hideous",1],["revolting",1],["horrible",1],["hairy",1],["cruel",1],["mischievous",1],["grotesque",1],["spiteful",1]], adverbs:[["naughtily",1],["peculiarly",1],["cruelly",1],["mischievously",1],["spitefully",1],["slyly",1],["secretly",1],["greedily",1],["foolishly",1],["rudely",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["as hairy as a gorilla",1],["sticking like super glue",1],["screaming like a wild animal",1],["as sharp as a needle",1],["twisting like a worm",1],["as peculiar as a bad dream",1],["smelling like rotten eggs",1],["ugly as a toad",1],["as stubborn as a mule",1],["cackling like a crow",1]], metaphors:[["a beard of revolting leftovers",1],["a cage of dark misery",1],["a fountain of horrible tricks",1],["a mountain of hair",1],["a whirlwind of mischief",1],["a heart of solid stone",1],["a trap of sticky glue",1],["a storm of nasty arguments",1],["a sea of screaming monkeys",1],["a nightmare of cruelty",1]], fronted:[["With a wicked grin,",1],["In the messy garden,",1],["Behind the wooden cage,",1],["Without warning,",1],["Suddenly,",1],["With sticky glue,",1],["Under the cover of darkness,",1],["In the middle of the night,",1],["With a loud cackle,",1],["All of a sudden,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  boydragons:["The Boy Who Grew Dragons",{
+    nouns:[["dragonfruit",1],["dragon",1],["sparks",1],["scalecanopy",1],["wings",1],["garden",1],["greenhouse",1],["flame",1],["tail",1],["nest",1]], verbs:[["hatch",1],["flicker",1],["soar",1],["spit",1],["nuzzle",1],["grow",1],["glimmer",1],["flutter",1],["scuttle",1],["explore",1]], adjectives:[["extraordinary",1],["glowing",1],["tiny",1],["fiery",1],["curious",1],["magical",1],["sparkling",1],["special",1],["unusual",1],["warm",1]], adverbs:[["curiously",1],["mysteriously",1],["gently",1],["eagerly",1],["playfully",1],["brightly",1],["swiftly",1],["quietly",1],["happily",1],["suddenly",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["glowing like a burning ember",1],["as tiny as a teacup",1],["wings soft as silk",1],["sparkling like a diamond",1],["as swift as a darting bird",1],["warm as a hot stone",1],["eyes shining like stars",1],["as curious as a kitten",1],["flickering like a candle flame",1],["smooth as a river pebble",1]], metaphors:[["a spark of pure magic",1],["the dragon was a flying flame",1],["a shower of golden embers",1],["a emerald in the foliage",1],["a pocket-sized fireball",1],["a cloud of dragon breath",1],["a garden of secret wonders",1],["a tapestry of shimmering scales",1],["a volcano of tiny hiccups",1],["a bundle of fiery joy",1]], fronted:[["Inside the warm greenhouse,",1],["High above the garden,",1],["With a flicker of sparks,",1],["Under the dragonfruit tree,",1],["Without a sound,",1],["As the dragon hatched,",1],["In the blink of an eye,",1],["With tiny fluttering wings,",1],["During the sunny afternoon,",1],["Secretly,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  ironman:["The Iron Man",{
+    nouns:[["scrap-metal",1],["cliff",1],["iron",1],["giant",1],["gears",1],["eyes",1],["clanker",1],["gulf",1],["space-bat-angel-dragon",1],["pit",1]], verbs:[["assemble",1],["crash",1],["creak",1],["devour",1],["tower",1],["rebuild",1],["stomp",1],["gasp",1],["clatter",1],["challenge",1]], adjectives:[["enormous",1],["gigantic",1],["metallic",1],["rusty",1],["colossal",1],["heavy",1],["powerful",1],["silent",1],["strange",1],["invincible",1]], adverbs:[["heavily",1],["enormously",1],["silently",1],["powefully",1],["strangely",1],["slowly",1],["loudly",1],["fiercely",1],["steadily",1],["suddenly",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["tall as a mountain peak",1],["eyes glowing like headlamps",1],["head turning like a crane",1],["as heavy as a lead weight",1],["clattering like falling iron bars",1],["as silent as a graveyard",1],["strong as a fortress",1],["crashing like thunder",1],["as cold as steel",1],["rebuilding like a giant puzzle",1]], metaphors:[["a mountain of iron and steel",1],["a walking scrap heap",1],["his eyes were glowing searchlights",1],["a iron giant of the coast",1],["a furnace of inner strength",1],["a pillar of solid metal",1],["a sea of rusting parts",1],["the cliff edge was his stage",1],["a machine of peace",1],["a titan of the earth",1]], fronted:[["At the edge of the high cliff,",1],["Deep within the pit,",1],["With a loud metallic clatter,",1],["Under the starry night sky,",1],["As the iron gears turned,",1],["Without making a sound,",1],["High above the earth,",1],["With giant glowing eyes,",1],["In the middle of the night,",1],["Slowly and steadily,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  ug:["Ug",{
+    nouns:[["trousers",1],["stone",1],["mammoth",1],["flint",1],["cave",1],["leather",1],["dugout",1],["boulder",1],["spear",1],["prentice",1]], verbs:[["knap",1],["invent",1],["dream",1],["chisel",1],["drag",1],["forage",1],["hunt",1],["shelter",1],["hammer",1],["ponder",1]], adjectives:[["stone-cold",1],["prehistoric",1],["heavy",1],["stiff",1],["determined",1],["uncomfortable",1],["creative",1],["ancient",1],["rugged",1],["durable",1]], adverbs:[["heavily",1],["determinedly",1],["creatively",1],["uncomfortably",1],["patiently",1],["eagerly",1],["stubbornly",1],["persistently",1],["curiously",1],["slowly",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["heavy as a boulder",1],["trousers stiff as a wooden board",1],["as cold as a stone wall",1],["dreaming like a modern inventor",1],["tough as mammoth skin",1],["as stubborn as a mule",1],["flint sharp as a razor",1],["moving slow as a glacier",1],["as quiet as an ancient cave",1],["hunting like a hungry wolf",1]], metaphors:[["a stone world of rigid ideas",1],["a mind ahead of its time",1],["a blanket of cold rock",1],["trousers of solid granite",1],["a spark of creative genius",1],["a cave of ancient traditions",1],["a fortress of heavy boulders",1],["the Stone Age was his prison",1],["a sea of hard obstacles",1],["a heart of soft hope",1]], fronted:[["Inside the dark stone cave,",1],["With a heavy chisel,",1],["Long ago in the Stone Age,",1],["Around the flickering campfire,",1],["Despite the stiff trousers,",1],["With endless patience,",1],["Across the icy landscape,",1],["In pursuit of soft trousers,",1],["Before the sun rose,",1],["With a sharp piece of flint,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  harleyhitch:["Harley Hitch and the Iron Forest",{
+    nouns:[["automaton",1],["gear",1],["sprocket",1],["forest",1],["rust",1],["fungus",1],["cog",1],["workbench",1],["wrench",1],["inventor",1]], verbs:[["repair",1],["tinkering",1],["mechanism",1],["clog",1],["spark",1],["assemble",1],["adjust",1],["diagnose",1],["flourish",1],["protect",1]], adjectives:[["inventive",1],["mechanical",1],["rusty",1],["clever",1],["peculiar",1],["intricate",1],["metal",1],["curious",1],["sturdy",1],["unusual",1]], adverbs:[["cleverly",1],["mechanically",1],["peculiarly",1],["curiously",1],["skillfully",1],["swiftly",1],["eagerly",1],["inventively",1],["carefully",1],["boldly",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["clever as a master inventor",1],["trees rigid as iron pillars",1],["cogs turning like clockwork",1],["as rusty as an old nail",1],["bright as a newly polished gear",1],["quick as a flickering spark",1],["fungus spreading like a web",1],["sturdy as an anvil",1],["as quiet as a broken machine",1],["sparkling like copper wire",1]], metaphors:[["a labyrinth of iron trees",1],["a brain of ticking cogs",1],["the forest was a rust monster",1],["a web of intricate machinery",1],["a spark of brilliant innovation",1],["the workshop was a paradise of junk",1],["a heart of mechanical courage",1],["a blanket of spreading fungus",1],["a sea of metallic leaves",1],["a puzzle of broken cogs",1]], fronted:[["Deep in the Iron Forest,",1],["At the cluttered workbench,",1],["With a turn of the wrench,",1],["Among the rusty sprockets,",1],["Without a second thought,",1],["As the gears jammed,",1],["Through the thick metal trees,",1],["With clever determination,",1],["In the heart of the town,",1],["Suddenly,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  juliuszebra:["Julius Zebra: Rumble with the Romans",{
+    nouns:[["gladiator",1],["Colosseum",1],["zebra",1],["arena",1],["chariot",1],["sand",1],["emperor",1],["shield",1],["stripes",1],["helmet",1]], verbs:[["charge",1],["battle",1],["dodge",1],["gallop",1],["entertain",1],["outsmart",1],["clash",1],["march",1],["parry",1],["cheer",1]], adjectives:[["striped",1],["fearless",1],["ridiculous",1],["courageous",1],["ancient",1],["heroic",1],["dusty",1],["determined",1],["mighty",1],["famous",1]], adverbs:[["courageously",1],["fearlessly",1],["heroically",1],["ridiculously",1],["dustily",1],["determinedly",1],["mighty",1],["swiftly",1],["dramatically",1],["boldly",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["striped like a barcode",1],["swift as a galloping horse",1],["as brave as a Roman soldier",1],["arena loud as a thunderstorm",1],["dust rising like a thick cloud",1],["as fierce as a lion",1],["shield heavy as iron",1],["dodging like a slippery eel",1],["as famous as an emperor",1],["cheering like a wild crowd",1]], metaphors:[["a warrior in a striped suit",1],["the arena was a cauldron of noise",1],["a sea of shouting spectators",1],["a storm of dust and hooves",1],["a wall of Roman shields",1],["a zebra of legendary courage",1],["the Colosseum was a giant trap",1],["a symphony of clashing swords",1],["an empire of golden glory",1],["a spark of freedom in the sand",1]], fronted:[["Inside the crowded Colosseum,",1],["Across the dusty arena sand,",1],["With shields held high,",1],["In front of the shouting Emperor,",1],["With a thunder of hooves,",1],["Before the battle began,",1],["Without any fear,",1],["Through the Roman streets,",1],["In a desperate bid for freedom,",1],["Suddenly,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  monsterslayer:["Monster Slayer",{
+    nouns:[["Beowulf",1],["Grendel",1],["meadhall",1],["warrior",1],["monster",1],["marsh",1],["armour",1],["blade",1],["hero",1],["feast",1]], verbs:[["slay",1],["vanquish",1],["defend",1],["grapple",1],["prowl",1],["protect",1],["challenge",1],["strike",1],["rescue",1],["echo",1]], adjectives:[["legendary",1],["hideous",1],["valiant",1],["merciless",1],["shadowy",1],["ancient",1],["heroic",1],["terrifying",1],["brave",1],["mighty",1]], adverbs:[["valiantly",1],["mercilessly",1],["heroically",1],["bravely",1],["terrifyingly",1],["mightily",1],["fiercely",1],["stealthily",1],["boldly",1],["silently",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["strong as thirty men",1],["Grendel lurking like a shadow",1],["armour gleaming like bright silver",1],["as relentless as a winter storm",1],["blade sharp as a razor",1],["roaring like a wounded beast",1],["as hideous as a nightmare",1],["swift as a striking falcon",1],["as cold as the icy marsh",1],["brave as a lion",1]], metaphors:[["a shield of pure courage",1],["Grendel was a creature of darkness",1],["a sea of murky terror",1],["a hall of golden laughter",1],["a blade of righteous vengeance",1],["a monster of endless rage",1],["the marsh was a watery graveyard",1],["a beacon of heroic light",1],["a storm of violent combat",1],["a heart of unbreakable iron",1]], fronted:[["Deep in the murky marsh,",1],["Inside the grand meadhall,",1],["With a sharp ancient blade,",1],["Under the cover of night,",1],["With legendary courage,",1],["Before the terrifying monster,",1],["Without a moment's hesitation,",1],["Across the foggy moor,",1],["In defence of the kingdom,",1],["Suddenly,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  malamander:["Malamander",{
+    nouns:[["Malamander",1],["eyerie",1],["hotel",1],["book dispensary",1],["beachcomber",1],["egg",1],["mist",1],["pier",1],["legend",1],["seaside",1]], verbs:[["lurk",1],["investigate",1],["unravel",1],["wander",1],["drizzle",1],["submerge",1],["discover",1],["haunt",1],["scour",1],["whisper",1]], adjectives:[["mysterious",1],["eerie",1],["coastal",1],["foggy",1],["peculiar",1],["curious",1],["shadowy",1],["creepy",1],["ancient",1],["stormy",1]], adverbs:[["mysteriously",1],["eerily",1],["curiously",1],["peculiarly",1],["shadowily",1],["creepily",1],["quietly",1],["continuously",1],["secretly",1],["cautiously",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["mist wrapping like a damp blanket",1],["eyes glowing like sea glass",1],["as mysterious as a ghost story",1],["eerie as an abandoned pier",1],["creeping like a shadow on the sand",1],["cold as icy sea water",1],["as rare as the Malamander egg",1],["whispering like the sea breeze",1],["quiet as a deserted hotel",1],["sharp as a seagull's cry",1]], metaphors:[["a seaside town of dark secrets",1],["the mist was a thick curtain",1],["a web of coastal legends",1],["the hotel was a labyrinth of history",1],["an ocean of lurking shadows",1],["a puzzle of missing clues",1],["the pier was a finger reaching into the dark",1],["a treasure chest of forgotten books",1],["a nightmare in the deep sea",1],["a blanket of shivering cold",1]], fronted:[["Through the misty seaside alley,",1],["At the Grand Nautilus Hotel,",1],["Along the icy pier,",1],["Deep inside the lost book dispensary,",1],["Under the foggy night sky,",1],["Without leaving a trace,",1],["Beside the crashing ocean waves,",1],["In search of the legendary egg,",1],["With a lantern in hand,",1],["All of a sudden,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  explorer:["The Explorer",{
+    nouns:[["canopy",1],["Amazon",1],["ruins",1],["vines",1],["piranha",1],["raft",1],["map",1],["jungle",1],["wilds",1],["shelter",1]], verbs:[["survive",1],["navigate",1],["forage",1],["trek",1],["construct",1],["endure",1],["discover",1],["explore",1],["swing",1],["blaze",1]], adjectives:[["perilous",1],["untamed",1],["dense",1],["resilient",1],["tropical",1],["vibrant",1],["unforgiving",1],["courageous",1],["wild",1],["ancient",1]], adverbs:[["perilously",1],["resiliently",1],["courageously",1],["wildly",1],["skilfully",1],["cautiously",1],["determinedly",1],["densely",1],["bravely",1],["persistently",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["vines twisting like thick ropes",1],["river winding like a giant snake",1],["as brave as a seasoned explorer",1],["jungle dense as a fortress wall",1],["resilient as a wild oak",1],["green as a shiny emerald",1],["paddling swift as an arrow",1],["as fierce as a prowling jaguar",1],["sun hot as a roaring furnace",1],["quiet as a hunting predator",1]], metaphors:[["an ocean of untamed green",1],["the jungle was a wild furnace",1],["a labyrinth of twisting vines",1],["a canopy of emerald leaves",1],["the river was a lifeline through the wilds",1],["a tapestry of tropical life",1],["a fortress of ancient trees",1],["a test of human resilience",1],["a map of unknown dangers",1],["a sea of uncharted territory",1]], fronted:[["Deep in the Amazon rainforest,",1],["High in the green canopy,",1],["Beside the rushing river,",1],["With an ancient map,",1],["Through the tangled vines,",1],["In the heart of the jungle,",1],["Against all odds,",1],["With fierce determination,",1],["Under the scorching tropical sun,",1],["Without any supplies,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  loki:["Loki: A Bad God's Guide to Being Good",{
+    nouns:[["Loki",1],["god",1],["mischief",1],["hammer",1],["diary",1],["mortal",1],["Asgard",1],["Thor",1],["virtue",1],["punishment",1]], verbs:[["scheme",1],["trick",1],["record",1],["deceive",1],["reform",1],["grumble",1],["plot",1],["outsmart",1],["disguise",1],["bicker",1]], adjectives:[["mischievously",1],["devious",1],["immortal",1],["godly",1],["sarcastic",1],["rebellious",1],["clever",1],["amusing",1],["tricky",1],["arrogant",1]], adverbs:[["mischievously",1],["deviously",1],["sarcastically",1],["rebelliously",1],["cleverly",1],["amusingly",1],["trickily",1],["arrogantly",1],["reluctantly",1],["secretly",1]], prepositions:[["above",1],["below",1],["beneath",1],["beside",1],["inside",1],["through",1],["underneath",1],["across",1],["alongside",1],["beyond",1]], similes:[["devious as a trickster god",1],["as stubborn as a frost giant",1],["sharp as a sarcastic comment",1],["as loud as Thor's thunder",1],["clever as a cunning fox",1],["quick as a flash of lightning",1],["as arrogant as an Asgardian prince",1],["slippery as an eel",1],["disguised like an ordinary schoolboy",1],["as unpredictable as chaotic magic",1]], metaphors:[["a whirlwind of chaos and tricks",1],["his diary was a confession booth",1],["a mask of mortal innocence",1],["a storm of godlike anger",1],["an ocean of sarcastic thoughts",1],["a web of clever lies",1],["Asgard was a golden memory",1],["a crucible of moral tests",1],["a volcano of mischievous ideas",1],["a giant ego in a tiny mortal body",1]], fronted:[["In his secret diary,",1],["Banishment to Earth,",1],["With a mischievous scheme,",1],["High in the realm of Asgard,",1],["Despite his best intentions,",1],["With a sarcastic grumble,",1],["To avoid punishment,",1],["In his mortal disguise,",1],["Without Thor noticing,",1],["Suddenly,",1]], conjunctions:[["because",1],["although",1],["while",1],["if",1],["so that",1],["until",1],["before",1],["unless",1],["since",1],["though",1]], determiners:[], modalverbs:[], personification:[]
+  }],
+  beetleboy:["Beetle Boy",{
+    nouns:[["coleopterist",2],["exoskeleton",2],["mandible",2],["specimen",2],["museum",2],["habitat",2],["entomology",2],["pincer",2],["species",2],["beetle",2]], verbs:[["investigate",2],["scuttle",2],["camouflage",2],["burrow",2],["interfere",2],["swarm",2],["inspect",2],["discover",2],["protect",2],["transform",2]], adjectives:[["mischievous",2],["iridescent",2],["determined",2],["curious",2],["peculiar",2],["marvellous",2],["miniature",2],["bizarre",2],["extraordinary",2],["unusual",2]], adverbs:[["frequently",2],["cautiously",2],["eagerly",2],["curiously",2],["stealthily",2],["swiftly",2],["quietly",2],["thoroughly",2],["unexpectedly",2],["cleverly",2]], prepositions:[["beneath the foliage",2],["inside the specimen jar",2],["under the magnifying glass",2],["among the insect drawers",2],["behind the display case",2],["across the terrarium",2],["near the entomology lab",2],["upon the wooden desk",2],["within the shadowy corner",2],["along the glass wall",2]], similes:[["like a tiny armoured knight",2],["as shiny as polished mahogany",2],["like a jewel crawling through the leaves",2],["as sharp as needles",2],["like a whisper in the dark",2],["as swift as a darting arrow",2],["like miniature machinery",2],["as secretive as a phantom",2],["like bronze shimmering in the light",2],["as tough as a miniature shield",2]], metaphors:[["an emerald in the soil",2],["a living miniature tank",2],["the silent sentinel of the garden",2],["a labyrinth of beetle burrows",2],["a golden jewel on six legs",2],["nature's tiny architect",2],["a microscopic kingdom",2],["an engine of chitin and muscle",2],["a ghost among the leaves",2],["the secret heart of the museum",2]], fronted:[["Under the magnifying glass,",2],["Without warning,",2],["Deep inside the museum,",2],["With quiet determination,",2],["Among the dusty jars,",2],["Through the thick glass,",2],["Before anyone noticed,",2],["Cautiously moving forward,",2],["High above the insect cases,",2],["In the dark of night,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The beetle's tiny face wore a look of ancient wisdom.",2],["The exoskeleton protected its inner secrets like a guard.",2],["The shadow stretched its long fingers across the terrarium.",2],["The museum clock ticked impatiently in the silence.",2],["The leaves whispered warnings to the creeping insect.",2],["Night embraced the quiet insect laboratory.",2],["The magnifying glass stared intently at the specimen.",2],["The glass jar held its breath as the beetle moved.",2],["The wind howled outside the museum doors.",2],["The darkness swallowed the scuttling creature.",2]]
+  }],
+  nowhereemporium:["The Nowhere Emporium",{
+    nouns:[["emporium",2],["wonder",2],["artifact",2],["labyrinth",2],["magic",2],["illusion",2],["shopkeeper",2],["miracle",2],["curiosity",2],["enchantment",2]], verbs:[["captivate",2],["dazzle",2],["mesmerise",2],["vanish",2],["sparkle",2],["conceal",2],["illuminate",2],["weave",2],["unravel",2],["enchant",2]], adjectives:[["marvellous",2],["extraordinary",2],["mysterious",2],["boundless",2],["ethereal",2],["spellbinding",2],["ancient",2],["glittering",2],["wondrous",2],["intricate",2]], adverbs:[["magically",2],["mysterious-ly",2],["wondrously",2],["silently",2],["effortlessly",2],["brilliantly",2],["mischievously",2],["gradually",2],["unbelievably",2],["radiantly",2]], prepositions:[["beyond the velvet curtain",2],["inside the endless corridor",2],["beneath the silver archway",2],["through the shimmering portal",2],["within the room of wonders",2],["among the floating globes",2],["across the mirrored floor",2],["behind the golden door",2],["atop the glass pedestal",2],["under the star-lit canopy",2]], similes:[["like a thousand burning stars",2],["as endless as eternity",2],["like liquid gold pouring into a glass",2],["as delicate as spun glass",2],["like a dream made real",2],["as bright as a blazing comet",2],["like velvet dissolving in water",2],["as mysterious as the night sky",2],["like a fountain of light",2],["as shifting as sea sand",2]], metaphors:[["a cathedral of human imagination",2],["an ocean of captured dreams",2],["the storehouse of magic",2],["a labyrinth of light and color",2],["a symphony of glittering wonders",2],["the beating heart of wonder",2],["a chest of infinite secrets",2],["a universe tucked behind a shop door",2],["a galaxy in a glass jar",2],["a tapestry woven from starlight",2]], fronted:[["Behind the velvet curtain,",2],["With a wave of magic,",2],["Deep within the emporium,",2],["Without making a sound,",2],["Through the glowing portal,",2],["As the music box played,",2],["High above the floating wonders,",2],["Inside the room of mirrors,",2],["Beyond human imagination,",2],["At the turn of the key,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The emporium breathed a sigh of wonder.",2],["Magic danced across the velvet drapery.",2],["The ancient clock chimed with a joyful voice.",2],["Shadows retreated as the room burst into light.",2],["The door beckoned eagerly to the curious boy.",2],["The velvet curtains whispered stories of long ago.",2],["Light danced merrily upon the glass ornaments.",2],["The room expanded like a waking giant.",2],["Time stood still inside the shop.",2],["The walls hummed with hidden energy.",2]]
+  }],
+  skyfalls:["When The Sky Falls",{
+    nouns:[["sanctuary",2],["gorilla",2],["blitz",2],["enclosure",2],["cage",2],["bombshell",2],["guardian",2],["menagerie",2],["air-raid",2],["destruction",2]], verbs:[["protect",2],["endure",2],["confront",2],["shelter",2],["rumble",2],["shatter",2],["guard",2],["devastate",2],["persevere",2],["tremble",2]], adjectives:[["fearsome",2],["formidable",2],["desperate",2],["relentless",2],["courageous",2],["vulnerable",2],["grim",2],["dilapidated",2],["tumultuous",2],["fierce",2]], adverbs:[["fiercely",2],["courageously",2],["defiant-ly",2],["desperately",2],["anxiously",2],["relentlessly",2],["silently",2],["stubbornly",2],["protectively",2],["grimly",2]], prepositions:[["inside the ape enclosure",2],["beneath the falling rubble",2],["during the air raid",2],["behind the iron bars",2],["across the bombed street",2],["under the smoky sky",2],["near the zookeeper's cottage",2],["amidst the roaring engines",2],["within the darkened sanctuary",2],["along the shattered wall",2]], similes:[["like a mountain forged in fur",2],["as heavy as thunder",2],["like a shield against the falling sky",2],["as sharp as shattered glass",2],["like a lion defending its den",2],["as dark as the blackout nights",2],["like a silent vow between friends",2],["as unyielding as iron",2],["like smoke rising from the rubble",2],["as cold as a winter bomb shelter",2]], metaphors:[["a fortress of flesh and bone",2],["the quiet anger of the caged beast",2],["a storm of fire and steel",2],["a sanctuary in the midst of ruin",2],["the guardian of the zoo",2],["a heartbeat against the blackout",2],["an anchor in the raging storm",2],["the iron cage of friendship",2],["a shield against the blitz",2],["a monument of wild strength",2]], fronted:[["As bombs rained from above,",2],["Inside the dark enclosure,",2],["With fierce determination,",2],["Through the clouds of dust,",2],["Amidst the roar of engines,",2],["Before the sirens wailed,",2],["Underneath the fallen timber,",2],["With heavy hearts,",2],["Across the shattered zoo,",2],["In the shadow of war,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The zoo holding its breath against the bombs.",2],["Siren screams sliced through the night air.",2],["The iron cage groaned under the weight of darkness.",2],["Searchlights clawed frantically at the sky.",2],["The city trembled beneath the falling rain of iron.",2],["Silence crept nervously back into the streets.",2],["Dust swallowed the remnants of the enclosure.",2],["The wind moaned through the broken glass.",2],["Shadows reached out from every corner.",2],["The night sky bled with crimson fire.",2]]
+  }],
+  piano:["The Piano",{
+    nouns:[["melody",2],["memory",2],["keyboard",2],["soldier",2],["piano",2],["nostalgia",2],["harmonies",2],["warfare",2],["companion",2],["musician",2]], verbs:[["reminisce",2],["play",2],["echo",2],["resonate",2],["haunt",2],["evoke",2],["perform",2],["strum",2],["flow",2],["soothe",2]], adjectives:[["poignant",2],["melancholy",2],["evocative",2],["haunting",2],["solemn",2],["peaceful",2],["ancient",2],["bittersweet",2],["harmonious",2],["graceful",2]], adverbs:[["softly",2],["gently",2],["solemnly",2],["gracefully",2],["poignantly",2],["rhythmically",2],["emotionally",2],["tenderly",2],["frequently",2],["quietly",2]], prepositions:[["upon the ivory keys",2],["across the dusty soundboard",2],["beneath the faded lid",2],["inside the empty parlor",2],["through the peaceful room",2],["near the grandfather clock",2],["amidst the floating dust motes",2],["under the soft spotlight",2],["along the polished mahogany",2],["behind the musician",2]], similes:[["like a gentle stream of silver notes",2],["as delicate as a butterfly's wing",2],["like ghosts dancing on ivory keys",2],["as soothing as a mother's lullaby",2],["like time slipping through fingers",2],["as rich as golden honey",2],["like thunder distant in the hills",2],["as clear as a bell",2],["like water flowing down a mountain",2],["as soft as falling snow",2]], metaphors:[["a bridge across time",2],["the vessel of forgotten memories",2],["a river of silver harmony",2],["the heartbeat of the empty room",2],["a tapestry of sound and sorrow",2],["a mirror to the soul",2],["a anchor in the storm of grief",2],["the gentle voice of yesterday",2],["a sanctuary of melody",2],["a light in the fading dusk",2]], fronted:[["With a gentle touch,",2],["Across the ivory keys,",2],["As the haunting tune played,",2],["In the silence of the room,",2],["Through the echoes of time,",2],["Softly at first,",2],["With tears in his eyes,",2],["Under the soft lamplight,",2],["Beyond the reach of war,",2],["From the depth of memory,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The piano sang its haunting melody.",2],["Ivory keys remembered the touch of old hands.",2],["Silence wrapped itself around the instrument.",2],["The notes danced joyfully across the parlour.",2],["The music wept for lost companions.",2],["Time paused to listen to the song.",2],["The old mahogany frame echoed with sorrow.",2],["Dust settled peacefully like a soft blanket.",2],["The shadows listened in respectful silence.",2],["The song reached out to touch his heart.",2]]
+  }],
+  annefrank:["Anne Frank’s Diary",{
+    nouns:[["annexe",2],["diary",2],["confinement",2],["courage",2],["persecution",2],["hiding",2],["hope",2],["secrecy",2],["freedom",2],["journal",2]], verbs:[["confide",2],["endure",2],["shelter",2],["persevere",2],["whisper",2],["aspire",2],["conceal",2],["cherish",2],["document",2],["survive",2]], adjectives:[["claustrophobic",2],["resilient",2],["courageous",2],["optimistic",2],["secretive",2],["perilous",2],["sincere",2],["confined",2],["poignant",2],["unyielding",2]], adverbs:[["quietly",2],["secretly",2],["courageously",2],["sincerely",2],["hopeful-ly",2],["patiently",2],["cautiously",2],["anxiously",2],["persistently",2],["tenderly",2]], prepositions:[["behind the revolving bookcase",2],["inside the secret annexe",2],["upon the pages of Kitty",2],["under the creaking floorboards",2],["beneath the darkened window",2],["through the wooden crack",2],["within the silent room",2],["across the small attic",2],["near the radio speaker",2],["beyond the attic skylight",2]], similes:[["like a canary in a cage",2],["as silent as a creeping mouse",2],["like a ray of light in total darkness",2],["as precious as gold dust",2],["like paper absorbing human tears",2],["as fragile as a glass bird",2],["like a secret whispered to a friend",2],["as deep as an ocean of hope",2],["like a flower blooming through concrete",2],["as steadfast as a lighthouse",2]], metaphors:[["a paper friend named Kitty",2],["a lighthouse of hope in a dark world",2],["a small haven amidst the storm",2],["the diary of a brave heart",2],["a window to an immortal spirit",2],["a voice that conquered silence",2],["a flame in the dark night",2],["the sanctuary of her private thoughts",2],["a fortress of courage",2],["the ink of immortality",2]], fronted:[["Behind the secret bookcase,",2],["In the quiet attic,",2],["With absolute silence,",2],["Through the ink of her pen,",2],["Despite the constant fear,",2],["Under the cover of night,",2],["With endless optimism,",2],["From the pages of her diary,",2],["High above the noisy street,",2],["In spite of confinement,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["Kitty listened patiently to every secret.",2],["The secret annexe guarded its hidden inhabitants.",2],["Fear knocked softly on the wooden door.",2],["Hope blossomed in the darkest hour.",2],["The diary held her tears without judgment.",2],["Silence pressed heavily against the walls.",2],["The bookcase stood guard over the hidden stairs.",2],["Night covered the city in a dark blanket.",2],["The clock's ticking reminded them to stay still.",2],["Words poured eagerly onto the empty pages.",2]]
+  }],
+  highwayman:["The Highwayman",{
+    nouns:[["highwayman",2],["rapier",2],["inn",2],["ostler",2],["cobblestones",2],["musket",2],["ribbon",2],["redcoat",2],["galleon",2],["torrent",2]], verbs:[["clatter",2],["gallop",2],["plunder",2],["brandish",2],["cascade",2],["sacrifice",2],["overhear",2],["tinkle",2],["shatter",2],["bound",2]], adjectives:[["torrential",2],["scarlet",2],["velvet",2],["clattering",2],["brazen",2],["perilous",2],["ghostly",2],["moonlit",2],["dashing",2],["treacherous",2]], adverbs:[["dashingly",2],["recklessly",2],["bravely",2],["stealthily",2],["swiftly",2],["rhythmically",2],["desperately",2],["dramatically",2],["wildly",2],["boldly",2]], prepositions:[["across the purple moor",2],["upon the dark cobblestones",2],["inside the old inn yard",2],["beneath the moonlit sky",2],["behind the wooden shutter",2],["through the misty hollow",2],["over the windy hill",2],["near the inn door",2],["along the winding road",2],["under the casement window",2]], similes:[["like a shadow riding a jet-black steed",2],["as red as a velvet rose",2],["like thunder on the cobblestones",2],["as sharp as a freshly honed rapier",2],["like a phantom in the moonlight",2],["as black as a midnight storm",2],["like ribbons floating on the breeze",2],["as swift as a striking viper",2],["like a ghost returning for its love",2],["as cold as iron fetters",2]], metaphors:[["the wind was a torrent of darkness",2],["the moon was a ghostly galleon",2],["the road was a ribbon of moonlight",2],["a hurricane of galloping hooves",2],["a river of crimson passion",2],["the shadow of the highwayman",2],["a storm of musket fire",2],["the velvet dark of the moor",2],["a nightmare in scarlet and black",2],["the ghost on the purple heather",2]], fronted:[["Over the purple moorland,",2],["With a clatter of hooves,",2],["Under the silver moonlight,",2],["By the old inn door,",2],["Through the misty night,",2],["With a flash of his rapier,",2],["High in the innkeeper's window,",2],["Without a sound,",2],["Across the cobblestones,",2],["In the redcoat ambush,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The wind howled through the bare trees.",2],["The moon sailed across the stormy sky.",2],["The cobblestones echoed with ghostly laughter.",2],["Night wrapped its dark cloak around the inn.",2],["The musket barked into the night.",2],["The moor groaned under the fierce gale.",2],["Shadows danced wildly on the tavern wall.",2],["Death waited patiently at the crossroad.",2],["The ribbon fluttered eagerly in the wind.",2],["The road stretched its long arm across the hill.",2]]
+  }],
+  alma:["Alma",{
+    nouns:[["doll",2],["snowfall",2],["slate",2],["pique",2],["shopfront",2],["doppelganger",2],["chalk",2],["trapping",2],["reflection",2],["mystery",2]], verbs:[["entice",2],["hypnotise",2],["trap",2],["scribble",2],["gaze",2],["transform",2],["beckon",2],["inspect",2],["vanish",2],["encase",2]], adjectives:[["uncanny",2],["chilling",2],["sinister",2],["porcelain",2],["desolate",2],["peculiar",2],["irresistible",2],["frozen",2],["eerie",2],["ominous",2]], adverbs:[["eerily",2],["silent-ly",2],["cautiously",2],["chillingly",2],["unwittingly",2],["slowly",2],["curiously",2],["frequently",2],["stealthily",2],["suddenly",2]], prepositions:[["inside the antique shop",2],["behind the glass window",2],["upon the snow-covered street",2],["across the chalk-written wall",2],["beneath the doll's stare",2],["under the icy roof",2],["near the shop doorstep",2],["through the frost-patterned pane",2],["beside the miniature clothes",2],["within the porcelain shell",2]], similes:[["like a butterfly drawn to a flame",2],["as cold as a porcelain cheek",2],["like a spider weaving its web",2],["as motionless as a marble statue",2],["like a ghost trapped in glass",2],["as silent as falling snow",2],["like an echo frozen in time",2],["as uncanny as a mirror image",2],["like a shadow gliding over snow",2],["as sharp as a winter wind",2]], metaphors:[["a prison made of porcelain",2],["the icy trap of curiosity",2],["a silent siren song",2],["a winter town of forgotten souls",2],["the glass wall of fate",2],["a nightmare wrapped in porcelain",2],["a web of antique dolls",2],["the cold eye of the shop window",2],["a mirror of stolen childhood",2],["a sinister gallery of shadows",2]], fronted:[["Through the icy window,",2],["On the deserted street,",2],["With a chill down her spine,",2],["Before she could turn away,",2],["Inside the silent shop,",2],["Across the wooden slate,",2],["Slowly and deliberately,",2],["Under the gaze of porcelain eyes,",2],["In the bite of the winter air,",2],["Without realizing the danger,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The shop window beckoned to the little girl.",2],["The doll's eyes followed her every move.",2],["Snow covered the street with a cold blanket.",2],["The door creaked open of its own volition.",2],["Silence filled the room like heavy smoke.",2],["The chalk board demanded a new signature.",2],["The icy air nipped sharply at her nose.",2],["The porcelain doll smiled a sinister smile.",2],["The shadow stretched forward to touch her.",2],["The shop devoured her innocence.",2]]
+  }],
+  holes:["Holes",{
+    nouns:[["camp",2],["wasteland",2],["lizard",2],["canteen",2],["curse",2],["shovel",2],["outlaw",2],["drought",2],["splinter",2],["palms",2]], verbs:[["excavate",2],["endure",2],["blister",2],["parch",2],["persist",2],["punish",2],["dig",2],["curse",2],["unearth",2],["survive",2]], adjectives:[["barren",2],["scorching",2],["desperate",2],["parched",2],["monotonous",2],["relentless",2],["exhausting",2],["venomous",2],["unforgiving",2],["dry",2]], adverbs:[["relentlessly",2],["wearily",2],["persistently",2],["harshly",2],["painfully",2],["laboriously",2],["stubbornly",2],["desperately",2],["slowly",2],["unforgivingly",2]], prepositions:[["beneath the blistering sun",2],["inside the five-foot hole",2],["across the dried lake bed",2],["under the yellow-spotted lizard's tail",2],["within the dusty camp",2],["near the warden's cabin",2],["along the cracked mud",2],["through the scorching heat",2],["around the wooden shovel",2],["beyond the horizon",2]], similes:[["like digging your own grave",2],["as dry as a bleach-white bone",2],["like a furnace blasting heat",2],["as venomous as a yellow-spotted lizard",2],["like liquid gold in a water canteen",2],["as cracked as an old leather boot",2],["like an ocean made of dust",2],["as hard as baked clay",2],["like a shadow hiding from the sun",2],["as endless as a desert highway",2]], metaphors:[["a furnace of dry earth",2],["a prison without walls",2],["the ocean of dried mud",2],["a curse carved into the dirt",2],["a sea of five-foot holes",2],["the warden's kingdom of heat",2],["a graveyard of ancient secrets",2],["the baking tray of the desert",2],["a mountain of thumb-shaped hope",2],["an ocean of dust and sweat",2]], fronted:[["Under the blazing sun,",2],["Deep inside the dry hole,",2],["With blistering hands,",2],["Across the endless lake bed,",2],["Day after exhausting day,",2],["Without a drop of water,",2],["Beneath the scorching sky,",2],["With every heave of the shovel,",2],["In the heat of Green Lake,",2],["Despite the ancient curse,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The sun beat down ruthlessly on the boys.",2],["The dry earth thirsted for rain.",2],["The shovel bit angrily into the dirt.",2],["Heat waves danced across the lake bed.",2],["The desert swallowed every drop of sweat.",2],["The hole yawned wider with every scoop.",2],["The wind howled across the barren lake.",2],["Time dragged its heavy feet in the heat.",2],["The yellow-spotted lizard guarded its territory.",2],["The curse whispered in the desert wind.",2]]
+  }],
+  nightbushero:["Night Bus Hero",{
+    nouns:[["shelter",2],["homelessness",2],["redemption",2],["bus",2],["park",2],["poverty",2],["investigation",2],["prejudice",2],["crime",2],["hero",2]], verbs:[["redeem",2],["navigate",2],["misjudge",2],["struggle",2],["uncover",2],["wander",2],["transform",2],["protect",2],["endure",2],["assist",2]], adjectives:[["resourceful",2],["resilient",2],["vulnerable",2],["misunderstood",2],["compassionate",2],["urban",2],["bleak",2],["determined",2],["hopeful",2],["shrewd",2]], adverbs:[["resourcefully",2],["compassionately",2],["urgently",2],["shrewdly",2],["resiliently",2],["bravely",2],["unexpectedly",2],["silently",2],["persistently",2],["cleverly",2]], prepositions:[["aboard the night bus",2],["beneath the railway arch",2],["across the chilly park",2],["inside the emergency shelter",2],["along the city streets",2],["under the yellow streetlight",2],["near the soup kitchen",2],["amidst the towering skyscrapers",2],["behind the cardboard box",2],["through the freezing fog",2]], similes:[["like a sanctuary on wheels",2],["as cold as concrete in December",2],["like a lost sheep in a crowded city",2],["as sharp as a streetwise kid",2],["like a beacon cutting through urban fog",2],["as warm as a hot cup of tea",2],["like shadows sleeping on park benches",2],["as bright as red bus paint",2],["like a puzzle waiting to be solved",2],["as tough as city cobblestones",2]], metaphors:[["a sanctuary rolling through the night",2],["the invisible citizens of the pavement",2],["a journey of the human heart",2],["a fortress against the winter cold",2],["the pulse of the midnight city",2],["a hero hidden behind a mischievous mask",2],["the maze of urban homelessness",2],["a light in the cold dark",2],["a bridge across social divides",2],["the red ribbon of London streets",2]], fronted:[["Aboard the double-decker bus,",2],["Through the freezing city mist,",2],["Under the glow of streetlights,",2],["With growing empathy,",2],["On the cold park bench,",2],["Despite initial prejudices,",2],["In the dark alleys of London,",2],["With a newfound purpose,",2],["Across the chilly metropolis,",2],["Behind his mischievous smile,",2]], conjunctions:[["although",2],["because",2],["whenever",2],["however",2],["if",2],["even though",2],["until",2],["since",2],["while",2],["whereas",2]], determiners:[["the",2],["a",2],["an",2],["this",2],["that",2],["these",2],["those",2],["every",2],["several",2],["many",2]], modalverbs:[["must",2],["should",2],["could",2],["would",2],["might",2],["may",2],["shall",2],["will",2],["can",2],["ought to",2]], personification:[["The night bus offered a warm embrace.",2],["London stretched its concrete arms in the dark.",2],["The winter wind bit through thin coats.",2],["Streetlights stared down like golden eyes.",2],["The city clock struck midnight with authority.",2],["Poverty whispered harsh truths to the passersby.",2],["The cold bench offered no comfort.",2],["Darkness wrapped around the park benches.",2],["The engine roared against the quiet night.",2],["Hope flickered like a candle in the breeze.",2]]
+  }],
+};
+const BASE_CLASSES = [
+  ["nouns","Nouns"],["verbs","Verbs"],["adjectives","Adjectives"],["adverbs","Adverbs"],
+  ["prepositions","Prepositions"],["similes","Similes"],["metaphors","Metaphors"],
+  ["fronted","Fronted Adverbials"],["conjunctions","Conjunctions"]
+];
+const UKS2_EXTRA_CLASSES = [["determiners","Determiners"],["modalverbs","Modal Verbs"],["personification","Personification"]];
+const CLASSES = BASE_CLASSES.concat(UKS2_EXTRA_CLASSES);
+const CONJ_GROUPS = [
+  { groupTitle:"Co-ordinating Conjunctions", cards:[
+    { title:"FANBOYS", items:[["F","for"],["A","and"],["N","nor"],["B","but"],["O","or"],["Y","yet"],["S","so"]] }
+  ]},
+  { groupTitle:"Subordinating Conjunctions", cards:[
+    { title:"ISAWAWABUB", items:[["I","if — shows a condition, like \u201Cif it rains\u201D"],["S","since — shows cause or time, like \u201Csince you asked\u201D"],["A","as — shows time or reason, like \u201Cas I walked\u201D"],["W","when — shows time, like \u201Cwhen we arrive\u201D"],["A","although — shows a contrast, like \u201Calthough it is cold\u201D"],["W","while — shows simultaneous action, like \u201Cwhile you sleep\u201D"],["A","after — shows sequence of time, like \u201Cafter school\u201D"],["B","before — shows sequence of time, like \u201Cbefore you go\u201D"],["U","until — shows duration up to a point, like \u201Cuntil tomorrow\u201D"],["B","because — shows a reason, like \u201Cbecause I said so\u201D"]] },
+    { title:"A WHITE BUS", items:[["A","after, although, as"],["W","when, whenever, where, wherever, while"],["H","how, however"],["I","if, in case"],["T","though (and sometimes than)"],["E","even if, even though"],["B","because, before"],["U","unless, until"],["S","since, so that"]] }
+  ]}
+];
+
+let state = { view:'stage', stage:null, topic:null, cls:null, q:'' };
+
+const PALETTE = [
+  {hi:'#c9663f',lo:'#8a3f27'}, // terracotta
+  {hi:'#d9ab48',lo:'#a67a26'}, // sandstone gold
+  {hi:'#6b9a5c',lo:'#3f6236'}, // moss green
+  {hi:'#5a7ba0',lo:'#35495f'}, // slate blue
+  {hi:'#9c5a86',lo:'#613653'}, // plum
+  {hi:'#c14f3a',lo:'#7c2e1f'}, // rust red
+  {hi:'#489d94',lo:'#2a5f59'}, // teal
+  {hi:'#d4a03a',lo:'#96691f'}, // mustard
+  {hi:'#af4d70',lo:'#6d2b41'}, // berry
+  {hi:'#5178a0',lo:'#2f4863'}  // denim
+];
+function paint(brick, i){ const c = PALETTE[i % PALETTE.length]; brick.style.setProperty('--bhi', c.hi); brick.style.setProperty('--blo', c.lo); }
+
+function cols(){ const w = window.innerWidth; return w<480?2 : w<700?3 : w<1000?4:5; }
+
+function buildWall(container, items, brickBuilder, opts){
+  opts = opts || {};
+  const c = cols();
+  const wall = document.createElement('div'); wall.className='wall';
+  let idx = 0;
+  for(let i=0;i<items.length;i+=c){
+    const row = items.slice(i,i+c);
+    const rowEl = document.createElement('div'); rowEl.className='wall-row';
+    const rowIdx = i/c;
+    if(rowIdx % 2 === 1 && row.length === c) rowEl.style.marginLeft = 'calc(var(--w, 150px) / 2 + 4px)';
+    row.forEach(item=>{
+      const b = brickBuilder(item, idx);
+      b.style.animationDelay = (idx*0.045)+'s';
+      if(!opts.noColor) paint(b, idx);
+      rowEl.appendChild(b);
+      idx++;
+    });
+    wall.appendChild(rowEl);
   }
-  return [...s].sort(() => Math.random() - 0.5);
+  container.appendChild(wall);
 }
 
-function makeQ(mode) {
-  const q = genQ(mode);
-  return { ...q, choices: genChoices(q.answer) };
+function crumbBtn(label, onClick){
+  const b = document.createElement('button'); b.textContent = label; b.onclick = onClick; return b;
 }
-
-function loadStorage(k) {
-  try { return JSON.parse(localStorage.getItem(k)) || []; } catch(e) { return []; }
-}
-function saveStorage(k, v) {
-  try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {}
-}
-
-function createPanelState(mode) {
-  return { q: makeQ(mode), score: 0, stars: 0, flash: null, showStar: false, answered: false, total: 0, correct: 0 };
-}
-
-function panelReducer(state, action) {
-  if (action.type === "CORRECT") {
-    return { ...state, answered: true, flash: "correct", score: state.score + 1, total: state.total + 1, correct: state.correct + 1 };
+function renderCrumbs(){
+  const el = document.getElementById('crumbs'); el.innerHTML='';
+  el.appendChild(crumbBtn('Choose year group', ()=>{ state.view='stage'; state.stage=null; state.topic=null; state.cls=null; render(); }));
+  if(state.stage!==null){
+    const sep=document.createElement('span'); sep.className='sep'; sep.textContent='›'; el.appendChild(sep);
+    el.appendChild(crumbBtn(STAGES[state.stage][0], ()=>{ state.view='topics'; state.topic=null; state.cls=null; render(); }));
   }
-  if (action.type === "CORRECT_STAR") {
-    return { ...state, answered: true, flash: "correct", score: state.score + 2, stars: state.stars + 1, showStar: true, total: state.total + 1, correct: state.correct + 1 };
+  if(state.topic){
+    const sep=document.createElement('span'); sep.className='sep'; sep.textContent='›'; el.appendChild(sep);
+    el.appendChild(crumbBtn(T[state.topic][0], ()=>{ state.view='classes'; state.cls=null; render(); }));
   }
-  if (action.type === "WRONG") {
-    return { ...state, answered: true, flash: "wrong", total: state.total + 1 };
+  if(state.cls){
+    const sep=document.createElement('span'); sep.className='sep'; sep.textContent='›'; el.appendChild(sep);
+    const label = CLASSES.find(c=>c[0]===state.cls)[1];
+    const cur = document.createElement('span'); cur.textContent=label; cur.style.color='var(--ink)'; cur.style.fontWeight='800';
+    el.appendChild(cur);
   }
-  if (action.type === "HIDE_STAR") {
-    return { ...state, showStar: false };
-  }
-  if (action.type === "NEXT") {
-    return { ...state, q: makeQ(action.mode), answered: false, flash: null };
-  }
-  return state;
 }
 
-// ── Victory Screen ──
-function drawStar(ctx, cx, cy, spikes, outer, inner) {
-  let rot = (Math.PI / 2) * 3;
-  const step = Math.PI / spikes;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - outer);
-  for (let i = 0; i < spikes; i++) {
-    ctx.lineTo(cx + Math.cos(rot) * outer, cy + Math.sin(rot) * outer);
-    rot += step;
-    ctx.lineTo(cx + Math.cos(rot) * inner, cy + Math.sin(rot) * inner);
-    rot += step;
-  }
-  ctx.lineTo(cx, cy - outer);
-  ctx.closePath();
-  ctx.fill();
-}
-
-function VictoryScreen({ winnerName, isDraw, onDone }) {
-  const canvasRef = useRef(null);
-  const partsRef = useRef([]);
-  const rafRef = useRef(null);
-  const [showText, setShowText] = useState(false);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    const PCOLS = ["#FF6B6B","#FFD700","#4ECDC4","#FF69B4","#45B7D1","#FFA500","#96CEB4","#ffffff"];
-
-    function burst(x, y, count, speed) {
-      for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 / count) * i + Math.random() * 0.4;
-        const sp = speed * (0.4 + Math.random() * 0.8);
-        partsRef.current.push({
-          x, y,
-          vx: Math.cos(angle) * sp,
-          vy: Math.sin(angle) * sp - Math.random() * 4,
-          r: 4 + Math.random() * 8,
-          color: PCOLS[Math.floor(Math.random() * PCOLS.length)],
-          life: 1,
-          decay: 0.012 + Math.random() * 0.018,
-          isStar: Math.random() < 0.3,
-          spin: (Math.random() - 0.5) * 0.3,
-          ang: Math.random() * Math.PI * 2,
-          gravity: 0.18 + Math.random() * 0.1,
-        });
-      }
-    }
-
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    burst(cx, cy, 120, 18);
-    const t1 = setTimeout(() => burst(cx * 0.3, cy * 0.8, 60, 14), 150);
-    const t2 = setTimeout(() => burst(cx * 1.7, cy * 0.8, 60, 14), 250);
-    const t3 = setTimeout(() => burst(cx * 0.6, cy * 1.2, 50, 12), 400);
-    const t4 = setTimeout(() => burst(cx * 1.4, cy * 1.2, 50, 12), 500);
-
-    const rainInterval = setInterval(() => {
-      for (let i = 0; i < 6; i++) {
-        partsRef.current.push({
-          x: Math.random() * canvas.width, y: -10,
-          vx: (Math.random() - 0.5) * 3,
-          vy: 2 + Math.random() * 3,
-          r: 4 + Math.random() * 6,
-          color: PCOLS[Math.floor(Math.random() * PCOLS.length)],
-          life: 1, decay: 0.008 + Math.random() * 0.01,
-          isStar: Math.random() < 0.4,
-          spin: (Math.random() - 0.5) * 0.2,
-          ang: Math.random() * Math.PI * 2,
-          gravity: 0.12,
-        });
-      }
-    }, 60);
-
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      partsRef.current = partsRef.current.filter(p => p.life > 0);
-      partsRef.current.forEach(p => {
-        ctx.save();
-        ctx.globalAlpha = p.life;
-        ctx.fillStyle = p.color;
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.ang);
-        if (p.isStar) {
-          drawStar(ctx, 0, 0, 5, p.r, p.r * 0.45);
-        } else {
-          ctx.beginPath();
-          ctx.arc(0, 0, p.r, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.restore();
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += p.gravity;
-        p.vx *= 0.99;
-        p.ang += p.spin;
-        p.life -= p.decay;
-      });
-      rafRef.current = requestAnimationFrame(draw);
-    }
-
-    rafRef.current = requestAnimationFrame(draw);
-    const t5 = setTimeout(() => setShowText(true), 600);
-    const t6 = setTimeout(() => clearInterval(rainInterval), 4000);
-    const t7 = setTimeout(onDone, 4600);
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      clearInterval(rainInterval);
-      [t1,t2,t3,t4,t5,t6,t7].forEach(clearTimeout);
-    };
-  }, []);
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"#0a0a1a", zIndex:500, overflow:"hidden" }}>
-      <canvas ref={canvasRef} style={{ position:"absolute", inset:0, width:"100%", height:"100%" }} />
-      {showText && (
-        <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-          <div style={{ fontSize:"clamp(4rem,12vw,8rem)", lineHeight:1, filter:"drop-shadow(0 0 30px gold)", animation:"crownIn 0.8s ease-out forwards" }}>
-            👑
-          </div>
-          <div style={{ fontSize:"clamp(2.5rem,8vw,6rem)", fontWeight:900, color:"#FFD700", textShadow:"0 0 30px #FFD700, 0 0 60px #FFA500, 0 4px 0 #B8860B", textAlign:"center", padding:"0 20px", animation:"nameIn 0.6s ease-out forwards" }}>
-            {isDraw ? "IT'S A DRAW!" : winnerName}
-          </div>
-          {!isDraw && (
-            <div style={{ fontSize:"clamp(1.2rem,4vw,2.5rem)", color:"#fff", fontWeight:"bold", marginTop:16, letterSpacing:4, animation:"nameIn 0.8s 0.3s ease-out both" }}>
-              WINS! 🎉
-            </div>
-          )}
-        </div>
-      )}
-      <style>{`
-        @keyframes crownIn { 0%{transform:translateY(-60px) scale(0.5);opacity:0} 70%{transform:translateY(10px) scale(1.1)} 100%{transform:translateY(0) scale(1);opacity:1} }
-        @keyframes nameIn  { 0%{transform:scale(0.3);opacity:0} 60%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
-      `}</style>
-    </div>
-  );
-}
-
-// ── Star burst ──
-function StarBurst() {
-  return (
-    <>
-      <div style={{ position:"absolute", top:"40%", left:"50%", fontSize:"2rem", zIndex:10, pointerEvents:"none", transform:"translate(-50%,-50%)", animation:"sbPop 0.9s ease-out forwards" }}>
-        ⭐+2
-      </div>
-      <style>{`@keyframes sbPop{0%{transform:translate(-50%,-50%) scale(0);opacity:1}60%{transform:translate(-50%,-60%) scale(1.8)}100%{transform:translate(-50%,-80%) scale(2);opacity:0}}`}</style>
-    </>
-  );
-}
-
-// ── Mode Selector ──
-function ModeSelector({ label, onSelect }) {
-  const modes = [
-    { id:"multiply", icon:"✖️", title:"Multiplication Only", sub:"Times tables up to 12×12", bg:"#FF6B6B" },
-    { id:"divide",   icon:"➗", title:"Division Only",       sub:"Division facts up to 144÷12", bg:"#45B7D1" },
-    { id:"mixed",    icon:"🔀", title:"Mixed",               sub:"Both multiplication & division", bg:"#96CEB4" },
-  ];
-  return (
-    <div style={S.center}>
-      <div style={S.card}>
-        <div style={{ fontSize:"2.5rem", marginBottom:8 }}>🎮</div>
-        <h2 style={S.title}>{label || "Choose Game Mode"}</h2>
-        <p style={{ color:"#888", fontSize:"0.9rem", marginBottom:20 }}>What type of questions?</p>
-        {modes.map(m => (
-          <button key={m.id} onClick={() => onSelect(m.id)} style={{ ...S.btn, background:m.bg, marginTop:12, flexDirection:"column", display:"flex", alignItems:"center", gap:2 }}>
-            <span style={{ fontWeight:"bold" }}>{m.icon} {m.title}</span>
-            <span style={{ fontSize:"0.8rem", opacity:0.85, fontWeight:"normal" }}>{m.sub}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Energy Bar ──
-function EnergyBar({ p1score, p2score, p1name, p2name }) {
-  const total = p1score + p2score;
-  const pct = total === 0 ? 50 : (p1score / total) * 100;
-  const p1win = p1score > p2score;
-  const p2win = p2score > p1score;
-  const clashColor = p1win ? "#ffaa00" : p2win ? "#00eeff" : "#ffffff";
-  const clashSize = p1win || p2win ? 52 : 40;
-  const f1x = Math.max(4, pct - 10 + (0.5 - pct / 100) * 60);
-  const f2x = Math.min(96, pct + 10 + (pct / 100 - 0.5) * 60);
-
-  return (
-    <div style={{ position:"relative", width:"100%", height:64, background:"#0a0a1a", overflow:"hidden", flexShrink:0 }}>
-      <div style={{ position:"absolute", left:0, top:"50%", transform:"translateY(-50%)", width:Math.max(pct,2)+"%", height:p1win?18:10, zIndex:3, transition:"width 0.4s, height 0.3s" }}>
-        <div style={{ position:"absolute", inset:0, background:"linear-gradient(90deg,#ff2200,#ff6600,#ffaa00,#fff)", borderRadius:"0 4px 4px 0", boxShadow:"0 0 12px 4px #ff4400" }} />
-      </div>
-      <div style={{ position:"absolute", right:0, top:"50%", transform:"translateY(-50%)", width:Math.max(100-pct,2)+"%", height:p2win?18:10, zIndex:3, transition:"width 0.4s, height 0.3s" }}>
-        <div style={{ position:"absolute", inset:0, background:"linear-gradient(270deg,#0044ff,#0099ff,#00eeff,#fff)", borderRadius:"4px 0 0 4px", boxShadow:"0 0 12px 4px #0066ff" }} />
-      </div>
-      <div style={{ position:"absolute", left:pct+"%", top:"50%", transform:"translate(-50%,-50%)", zIndex:10, width:clashSize, height:clashSize, transition:"left 0.4s" }}>
-        <div style={{ position:"absolute", inset:0, borderRadius:"50%", background:"radial-gradient(circle,#fff 0%,"+clashColor+" 40%,transparent 70%)", boxShadow:"0 0 16px 6px "+clashColor }} />
-      </div>
-      <div style={{ position:"absolute", left:f1x+"%", bottom:2, transform:"translateX(-50%)", zIndex:8, fontSize:"1.4rem", transition:"left 0.4s", filter:p1win?"drop-shadow(0 0 6px #ff6600)":"none" }}>🔴</div>
-      <div style={{ position:"absolute", left:f2x+"%", bottom:2, transform:"translateX(-50%)", zIndex:8, fontSize:"1.4rem", transition:"left 0.4s", filter:p2win?"drop-shadow(0 0 6px #00aaff)":"none" }}>🔵</div>
-      <div style={{ position:"absolute", top:4, left:8, color:"#FF6B6B", fontWeight:"bold", fontSize:"0.8rem", zIndex:20, textShadow:"0 0 6px #FF6B6B" }}>{p1name}: {p1score}</div>
-      <div style={{ position:"absolute", top:4, right:8, color:"#45B7D1", fontWeight:"bold", fontSize:"0.8rem", zIndex:20, textShadow:"0 0 6px #45B7D1" }}>{p2score}: {p2name}</div>
-    </div>
-  );
-}
-
-// ── Player Panel ──
-function PlayerPanel({ name, color, accentBg, gameActive, mode, onScoreChange, onStarsChange, onStatsChange }) {
-  const init = useCallback(() => createPanelState(mode), []);
-  const [st, dispatch] = useReducer(panelReducer, null, init);
-  const { q, score, stars, flash, showStar, answered, total, correct } = st;
-
-  const prevScore = useRef(0);
-  const prevStars = useRef(0);
-
-  useEffect(() => {
-    if (score !== prevScore.current) { prevScore.current = score; onScoreChange(score); }
+// ---- Printing: builds a clean, mostly-black-and-white worksheet into #printArea ----
+function buildConjPrintSection(){
+  const section = document.createElement('div'); section.className='pr-section';
+  const h = document.createElement('div'); h.className='pr-heading'; h.textContent='Conjunctions'; section.appendChild(h);
+  CONJ_GROUPS.forEach(group=>{
+    const gt = document.createElement('div'); gt.className='pr-grouptitle'; gt.textContent=group.groupTitle; section.appendChild(gt);
+    const row = document.createElement('div'); row.className='pr-conjrow';
+    group.cards.forEach(g=>{
+      const c = document.createElement('div'); c.className='pr-conjcard';
+      const h4 = document.createElement('h4'); h4.textContent=g.title; c.appendChild(h4);
+      const ul = document.createElement('ul');
+      g.items.forEach(([l,w])=>{ const li=document.createElement('li'); li.innerHTML=''; const b=document.createElement('b'); b.textContent=l+': '; li.appendChild(b); li.appendChild(document.createTextNode(w)); ul.appendChild(li); });
+      c.appendChild(ul);
+      row.appendChild(c);
+    });
+    section.appendChild(row);
   });
-  useEffect(() => {
-    if (stars !== prevStars.current) { prevStars.current = stars; onStarsChange(stars); }
+  return section;
+}
+
+function buildClassPrintSection(clsSlug){
+  const data = (T[state.topic][1][clsSlug]) || [];
+  const filtered = data.filter(([w,tier])=> tier<=state.stage);
+  if(filtered.length===0) return null;
+  const label = (CLASSES.find(c=>c[0]===clsSlug)||[])[1] || clsSlug;
+  const isPhrase = clsSlug==='similes' || clsSlug==='metaphors' || clsSlug==='fronted';
+  const section = document.createElement('div'); section.className='pr-section';
+  const h = document.createElement('div'); h.className='pr-heading'; h.textContent=label; section.appendChild(h);
+  const wrap = document.createElement('div'); wrap.className='pr-chips'+(isPhrase?' pr-phrases':'');
+  filtered.forEach(([w])=>{ const chip=document.createElement('span'); chip.className='pr-chip'; chip.textContent=w; wrap.appendChild(chip); });
+  section.appendChild(wrap);
+  return section;
+}
+
+function buildPrintArea(onlyClass){
+  const area = document.getElementById('printArea');
+  area.innerHTML = '';
+  const stageCode = STAGES[state.stage][0];
+  const topicLabel = T[state.topic][0];
+
+  const titleRow = document.createElement('div'); titleRow.className='pr-title';
+  const icon = document.createElement('span'); icon.textContent='🧱'; icon.style.fontSize='1.3rem';
+  const h1 = document.createElement('h1'); h1.textContent = topicLabel;
+  titleRow.appendChild(icon); titleRow.appendChild(h1);
+  area.appendChild(titleRow);
+
+  const sub = document.createElement('div'); sub.className='pr-sub';
+  sub.textContent = 'Key stage: ' + stageCode + (onlyClass ? ' — ' + ((CLASSES.find(c=>c[0]===onlyClass)||[])[1]||onlyClass) : ' — full word bank');
+  area.appendChild(sub);
+
+  const classesToPrint = onlyClass ? [onlyClass] : CLASSES.map(c=>c[0]).filter(slug=>{
+    if(slug==='conjunctions') return true;
+    return stageCode==='KS1' ? KS1_CLASSES.has(slug) : (stageCode==='UKS2' || BASE_CLASSES.some(c=>c[0]===slug));
   });
-  useEffect(() => {
-    onStatsChange({ total, correct });
-  }, [total, correct]);
 
-  const tRef = useRef(null);
-  const next = useCallback((delay) => {
-    if (tRef.current) clearTimeout(tRef.current);
-    tRef.current = setTimeout(() => dispatch({ type:"NEXT", mode }), delay);
-  }, [mode]);
-
-  const pick = useCallback((c) => {
-    if (answered || !gameActive) return;
-    if (c === q.answer) {
-      if (q.isSquare) {
-        dispatch({ type:"CORRECT_STAR" });
-        tRef.current = setTimeout(() => { dispatch({ type:"HIDE_STAR" }); next(150); }, 900);
+  let any = false;
+  classesToPrint.forEach(slug=>{
+    if(slug==='conjunctions'){
+      if(stageCode==='KS1'){
+        const sec = buildClassPrintSection('conjunctions');
+        if(sec){ area.appendChild(sec); any=true; }
       } else {
-        dispatch({ type:"CORRECT" });
-        next(380);
+        area.appendChild(buildConjPrintSection()); any=true;
       }
     } else {
-      dispatch({ type:"WRONG" });
-      next(480);
+      const sec = buildClassPrintSection(slug);
+      if(sec){ area.appendChild(sec); any=true; }
     }
-  }, [answered, gameActive, q, next]);
+  });
 
-  useEffect(() => () => { if (tRef.current) clearTimeout(tRef.current); }, []);
-
-  const bg = flash === "correct" ? "#d4f7d4" : flash === "wrong" ? "#ffd5d5" : "#fff";
-  const acc = total > 0 ? Math.round((correct / total) * 100) : null;
-
-  return (
-    <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", background:bg, transition:"background 0.25s", borderRadius:20, padding:"18px 14px", position:"relative", boxShadow:"0 4px 20px "+color+"55", border:"3px solid "+color }}>
-      {showStar && <StarBurst />}
-      <div style={{ background:color, color:"#fff", borderRadius:12, padding:"7px 28px", fontWeight:"bold", fontSize:"1.5rem", marginBottom:10 }}>{name}</div>
-      <div style={{ display:"flex", gap:14, marginBottom:10, alignItems:"center", flexWrap:"wrap", justifyContent:"center" }}>
-        <div style={{ fontSize:"2rem", fontWeight:"bold", color }}>{score} pts</div>
-        {acc !== null && <div style={{ fontSize:"0.9rem", background:"#f0f0f0", borderRadius:8, padding:"3px 10px", color:"#555" }}>🎯 {acc}%</div>}
-        <div style={{ fontSize:"1rem" }}>{stars > 0 ? Array(stars).fill("⭐").join("") : <span style={{ color:"#ccc", fontSize:"0.8rem" }}>no ⭐</span>}</div>
-      </div>
-      {q.isSquare && <div style={{ background:"#fff8e1", border:"2px solid #ffd700", borderRadius:8, padding:"3px 10px", fontSize:"0.78rem", fontWeight:"bold", color:"#b8860b", marginBottom:8 }}>⭐ Squared! +2 pts!</div>}
-      <div style={{ fontSize:"clamp(1.8rem,3.5vw,3rem)", fontWeight:"bold", color:"#222", background:accentBg, borderRadius:14, padding:"14px 20px", marginBottom:14, width:"100%", textAlign:"center", boxSizing:"border-box" }}>
-        {q.text} = ?
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, width:"100%" }}>
-        {q.choices.map((c, i) => {
-          let cbg = COLS4[i];
-          if (answered) cbg = c === q.answer ? "#4CAF50" : "#ccc";
-          return (
-            <button key={i} onPointerDown={() => pick(c)} style={{ padding:"clamp(12px,2vh,20px) 8px", borderRadius:14, border:"none", background:cbg, color:answered&&c!==q.answer?"#999":"#fff", fontSize:"clamp(1.3rem,2.2vw,1.9rem)", fontWeight:"bold", cursor:"pointer", boxShadow:"0 3px 8px rgba(0,0,0,0.12)", touchAction:"manipulation", userSelect:"none" }}>
-              {c}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Countdown ──
-function Countdown({ p1name, p2name, onDone }) {
-  const [n, setN] = useState(3);
-  useEffect(() => {
-    if (n === 0) { const t = setTimeout(onDone, 650); return () => clearTimeout(t); }
-    const t = setTimeout(() => setN(v => v - 1), 900);
-    return () => clearTimeout(t);
-  }, [n]);
-  const col = n === 0 ? "#4CAF50" : n === 1 ? "#FF6B6B" : n === 2 ? "#FFEAA7" : "#4ECDC4";
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(20,20,40,0.93)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", zIndex:200 }}>
-      <div style={{ color:"#fff", fontSize:"2rem", fontWeight:"bold", marginBottom:24, letterSpacing:2 }}>GET READY!</div>
-      <div style={{ display:"flex", gap:60, marginBottom:36 }}>
-        {[{nm:p1name,c:"#FF6B6B",e:"🔴"},{nm:p2name,c:"#45B7D1",e:"🔵"}].map(x => (
-          <div key={x.nm} style={{ textAlign:"center" }}>
-            <div style={{ fontSize:"2.5rem", marginBottom:8 }}>{x.e}</div>
-            <div style={{ color:x.c, fontWeight:"bold", fontSize:"1.3rem" }}>{x.nm}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ fontSize: n===0?"5rem":"8rem", fontWeight:"bold", color:col, animation:"cdPop 0.5s ease-out", transition:"color 0.2s" }}>
-        {n === 0 ? "GO! 🚀" : n}
-      </div>
-      <style>{`@keyframes cdPop{0%{transform:scale(0.3);opacity:0}60%{transform:scale(1.2)}100%{transform:scale(1);opacity:1}}`}</style>
-    </div>
-  );
-}
-
-// ── Battle Screen ──
-function BattleScreen({ p1name, p2name, mode, onDone }) {
-  const [phase, setPhase] = useState("countdown");
-  const [time, setTime] = useState(60);
-  const [active, setActive] = useState(false);
-  const [p1sc, setP1sc] = useState(0);
-  const [p2sc, setP2sc] = useState(0);
-  const [p1st, setP1st] = useState(0);
-  const [p2st, setP2st] = useState(0);
-  const [victory, setVictory] = useState(false);
-  const fin = useRef({ p1:0, s1:0, p2:0, s2:0, a1:{total:0,correct:0}, a2:{total:0,correct:0} });
-  const ivl = useRef(null);
-
-  const h1sc = useCallback(v => { fin.current.p1=v; setP1sc(v); }, []);
-  const h2sc = useCallback(v => { fin.current.p2=v; setP2sc(v); }, []);
-  const h1st = useCallback(v => { fin.current.s1=v; setP1st(v); }, []);
-  const h2st = useCallback(v => { fin.current.s2=v; setP2st(v); }, []);
-  const h1ac = useCallback(v => { fin.current.a1=v; }, []);
-  const h2ac = useCallback(v => { fin.current.a2=v; }, []);
-
-  const start = useCallback(() => {
-    setPhase("play"); setActive(true);
-    ivl.current = setInterval(() => setTime(t => { if(t<=1){clearInterval(ivl.current);return 0;} return t-1; }), 1000);
-  }, []);
-
-  useEffect(() => {
-    if (time === 0 && phase === "play") { setActive(false); setVictory(true); }
-  }, [time, phase]);
-
-  useEffect(() => () => clearInterval(ivl.current), []);
-
-  const tc = time>20?"#4ECDC4":time>10?"#f0a500":"#FF6B6B";
-  const winner = fin.current.p1>fin.current.p2?p1name:fin.current.p2>fin.current.p1?p2name:null;
-
-  return (
-    <div style={{ height:"100vh", display:"flex", flexDirection:"column", background:"linear-gradient(135deg,#1a1a2e,#16213e)", overflow:"hidden" }}>
-      {phase==="countdown" && <Countdown p1name={p1name} p2name={p2name} onDone={start} />}
-      {victory && <VictoryScreen winnerName={winner||""} isDraw={!winner} onDone={() => { setVictory(false); onDone(fin.current.p1,fin.current.s1,fin.current.p2,fin.current.s2,fin.current.a1,fin.current.a2); }} />}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 20px", background:"rgba(0,0,0,0.45)", flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ fontSize:"1.5rem" }}>🔴</span>
-          <span style={{ fontSize:"1.6rem", fontWeight:"bold", color:"#FF6B6B" }}>{p1sc}</span>
-          <span style={{ color:"#FF6B6B", fontWeight:"bold", fontSize:"0.95rem" }}>{p1name}</span>
-        </div>
-        <div style={{ textAlign:"center" }}>
-          <div style={{ fontSize:"clamp(1.8rem,4vw,2.8rem)", fontWeight:"bold", color:tc, lineHeight:1 }}>{time}s</div>
-          <div style={{ height:7, width:160, background:"#333", borderRadius:4, marginTop:3 }}>
-            <div style={{ height:"100%", background:tc, borderRadius:4, width:((time/60)*100)+"%", transition:"width 1s linear" }} />
-          </div>
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ color:"#45B7D1", fontWeight:"bold", fontSize:"0.95rem" }}>{p2name}</span>
-          <span style={{ fontSize:"1.6rem", fontWeight:"bold", color:"#45B7D1" }}>{p2sc}</span>
-          <span style={{ fontSize:"1.5rem" }}>🔵</span>
-        </div>
-      </div>
-      <div style={{ flex:1, display:"flex", gap:14, padding:"12px 14px 8px", minHeight:0 }}>
-        <PlayerPanel key="p1" name={p1name} color="#FF6B6B" accentBg="#fff0f0" gameActive={active} mode={mode} onScoreChange={h1sc} onStarsChange={h1st} onStatsChange={h1ac} />
-        <div style={{ width:4, background:"rgba(255,255,255,0.15)", borderRadius:4, flexShrink:0 }} />
-        <PlayerPanel key="p2" name={p2name} color="#45B7D1" accentBg="#f0f8ff" gameActive={active} mode={mode} onScoreChange={h2sc} onStarsChange={h2st} onStatsChange={h2ac} />
-      </div>
-      <EnergyBar p1score={p1sc} p2score={p2sc} p1name={p1name} p2name={p2name} />
-    </div>
-  );
-}
-
-// ── Solo Screen ──
-function SoloScreen({ username, mode, onDone }) {
-  const init = useCallback(() => createPanelState(mode), []);
-  const [st, dispatch] = useReducer(panelReducer, null, init);
-  const { q, score, stars, flash, showStar, answered, total, correct } = st;
-  const [time, setTime] = useState(60);
-  const [victory, setVictory] = useState(false);
-  const ivl = useRef(null);
-  const nxt = useRef(null);
-
-  useEffect(() => {
-    ivl.current = setInterval(() => setTime(t => { if(t<=1){clearInterval(ivl.current);return 0;} return t-1; }), 1000);
-    return () => { clearInterval(ivl.current); clearTimeout(nxt.current); };
-  }, []);
-
-  useEffect(() => {
-    if (time === 0 && !victory) setVictory(true);
-  }, [time]);
-
-  const sched = (d) => { nxt.current = setTimeout(() => dispatch({ type:"NEXT", mode }), d); };
-
-  const pick = (c) => {
-    if (answered || time === 0) return;
-    if (c === q.answer) {
-      if (q.isSquare) { dispatch({ type:"CORRECT_STAR" }); setTimeout(() => { dispatch({ type:"HIDE_STAR" }); sched(150); }, 900); }
-      else { dispatch({ type:"CORRECT" }); sched(380); }
-    } else { dispatch({ type:"WRONG" }); sched(480); }
-  };
-
-  const tc = time>20?"#4ECDC4":time>10?"#f0a500":"#FF6B6B";
-  const bg = flash==="correct"?"#d4f7d4":flash==="wrong"?"#ffd5d5":"#fff";
-  const acc = total>0 ? Math.round((correct/total)*100) : null;
-
-  return (
-    <div style={S.center}>
-      {victory && <VictoryScreen winnerName={username} isDraw={false} onDone={() => { setVictory(false); onDone(score, stars, { total, correct }); }} />}
-      <div style={{ ...S.card, position:"relative", background:bg, transition:"background 0.25s" }}>
-        {showStar && <StarBurst />}
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-          <div style={{ fontSize:"0.95rem" }}>⭐ {stars}</div>
-          <div style={{ fontSize:"2rem", fontWeight:"bold", color:tc }}>{time}s</div>
-          <div style={{ fontSize:"0.95rem" }}>Score: {score}</div>
-        </div>
-        {acc !== null && <div style={{ fontSize:"0.85rem", color:"#777", marginBottom:6 }}>🎯 {acc}%</div>}
-        <div style={{ height:7, background:"#eee", borderRadius:4, marginBottom:14 }}>
-          <div style={{ height:"100%", background:tc, borderRadius:4, width:((time/60)*100)+"%", transition:"width 1s linear" }} />
-        </div>
-        {q.isSquare && <div style={{ background:"#fff8e1", border:"2px solid #ffd700", borderRadius:8, padding:"3px 10px", fontSize:"0.78rem", fontWeight:"bold", color:"#b8860b", marginBottom:8 }}>⭐ Squared! +2 pts!</div>}
-        <div style={{ fontSize:"2rem", fontWeight:"bold", color:"#333", padding:"10px 0", textAlign:"center" }}>{q.text} = ?</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 }}>
-          {q.choices.map((c, i) => {
-            let cbg = COLS4[i];
-            if (answered) cbg = c === q.answer ? "#4CAF50" : "#ccc";
-            return (
-              <button key={i} onPointerDown={() => pick(c)} style={{ ...S.choiceBtn, background:cbg, color:answered&&c!==q.answer?"#aaa":"#fff", touchAction:"manipulation", userSelect:"none" }}>
-                {c}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Admin ──
-function AdminConsole({ onClose }) {
-  const [pin, setPin] = useState("");
-  const [authed, setAuthed] = useState(false);
-  const [pinErr, setPinErr] = useState(false);
-  const [scores, setScores] = useState(() => loadStorage("ttb_scores"));
-  const [conf, setConf] = useState(null);
-  const [deleted, setDeleted] = useState(null);
-  const users = [...new Set(scores.map(s => s.username))].sort();
-
-  const tryPin = () => {
-    if (pin === ADMIN_PIN) { setAuthed(true); setPinErr(false); }
-    else { setPinErr(true); setPin(""); }
-  };
-  const remove = (u) => {
-    const upd = scores.filter(s => s.username !== u);
-    saveStorage("ttb_scores", upd); setScores(upd); setDeleted(u); setConf(null);
-    setTimeout(() => setDeleted(null), 2500);
-  };
-
-  const OV = { position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:300, padding:16 };
-  const MD = { background:"#fff", borderRadius:20, padding:28, width:"100%", boxShadow:"0 12px 40px rgba(0,0,0,0.25)", textAlign:"center" };
-  const SB = { padding:"7px 14px", borderRadius:8, border:"none", color:"#fff", fontWeight:"bold", cursor:"pointer", fontSize:"0.85rem" };
-
-  if (!authed) {
-    return (
-      <div style={OV}>
-        <div style={{ ...MD, maxWidth:340 }}>
-          <div style={{ fontSize:"2rem", marginBottom:8 }}>🔒</div>
-          <h2 style={S.title}>Teacher Admin</h2>
-          <p style={{ color:"#666", marginBottom:16, fontSize:"0.95rem" }}>Enter your PIN to continue.</p>
-          <input type="password" maxLength={6} placeholder="Enter PIN" value={pin} onChange={e => setPin(e.target.value)} onKeyDown={e => e.key==="Enter"&&tryPin()} style={{ ...S.input, borderColor:pinErr?"#FF6B6B":"#ddd", marginBottom:8 }} autoFocus />
-          {pinErr && <p style={{ color:"#FF6B6B", margin:"0 0 10px", fontSize:"0.9rem" }}>Incorrect PIN.</p>}
-          <button style={{ ...S.btn, background:"#45B7D1", marginTop:8 }} onClick={tryPin}>Unlock 🔓</button>
-          <button style={{ ...S.btn, background:"#eee", color:"#333", marginTop:10 }} onClick={onClose}>Cancel</button>
-          <p style={{ color:"#aaa", fontSize:"0.75rem", marginTop:14 }}>Default PIN: 1234</p>
-        </div>
-      </div>
-    );
+  if(!any){
+    const e = document.createElement('div'); e.className='pr-section'; e.textContent='Nothing to print here yet.';
+    area.appendChild(e);
   }
 
-  return (
-    <div style={OV}>
-      <div style={{ ...MD, maxWidth:480 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-          <h2 style={{ ...S.title, margin:0 }}>🛡️ Admin Console</h2>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"1.5rem", cursor:"pointer", color:"#999" }}>✕</button>
-        </div>
-        {deleted && <div style={{ background:"#d4f7d4", borderRadius:10, padding:"10px 14px", marginBottom:14, color:"#2a7a2a", fontWeight:"bold" }}>✅ "{deleted}" removed.</div>}
-        {users.length === 0
-          ? <p style={{ color:"#aaa", padding:"20px 0" }}>No players yet.</p>
-          : (
-            <>
-              <p style={{ color:"#666", marginBottom:12, fontSize:"0.9rem" }}>{users.length} player{users.length!==1?"s":""} on the leaderboard.</p>
-              <div style={{ maxHeight:320, overflowY:"auto", borderRadius:12, border:"1px solid #eee" }}>
-                {users.map((u, i) => {
-                  const cnt = scores.filter(s => s.username===u).length;
-                  const best = Math.max(...scores.filter(s => s.username===u).map(s => s.score));
-                  return (
-                    <div key={u} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", background:i%2===0?"#fff":"#fafafa", borderBottom:i<users.length-1?"1px solid #f0f0f0":"none" }}>
-                      <div>
-                        <div style={{ fontWeight:"bold" }}>{u}</div>
-                        <div style={{ color:"#999", fontSize:"0.8rem" }}>{cnt} games · best: {best}</div>
-                      </div>
-                      {conf===u
-                        ? <div style={{ display:"flex", gap:6 }}><button onClick={()=>remove(u)} style={{ ...SB, background:"#FF6B6B" }}>Confirm 🗑️</button><button onClick={()=>setConf(null)} style={{ ...SB, background:"#aaa" }}>Cancel</button></div>
-                        : <button onClick={()=>setConf(u)} style={{ ...SB, background:"#FF6B6B" }}>Remove</button>
-                      }
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )
-        }
-        <button style={{ ...S.btn, background:"#96CEB4", marginTop:16 }} onClick={onClose}>Done ✓</button>
-      </div>
-    </div>
-  );
+  const foot = document.createElement('div'); foot.className='pr-footer';
+  foot.textContent = 'Millhouse Primary School — Writing Word Bank';
+  area.appendChild(foot);
 }
 
-// ── Simple Screens ──
-function HomeScreen({ username, onChangeUser, onSolo, onBattle, onLeaderboard, onAdmin }) {
-  return (
-    <div style={S.center}>
-      <div style={S.card}>
-        <div style={{ fontSize:"3.5rem", marginBottom:4 }}>🧮</div>
-        <h1 style={S.title}>Times Table Blast!</h1>
-        <p style={{ color:"#666", marginBottom:20 }}>Hello, <b>{username}</b>! <span style={{ cursor:"pointer", color:"#45B7D1", fontSize:"0.85rem" }} onClick={onChangeUser}>(not you?)</span></p>
-        <button style={{ ...S.btn, background:"#FF6B6B" }} onClick={onSolo}>▶ Solo Game</button>
-        <button style={{ ...S.btn, background:"#45B7D1", marginTop:12 }} onClick={onBattle}>⚔️ Live Battle!</button>
-        <button style={{ ...S.btn, background:"#96CEB4", marginTop:12 }} onClick={onLeaderboard}>🏆 Leaderboard</button>
-        <button style={{ ...S.btn, background:"#bbb", color:"#444", marginTop:20, fontSize:"0.85rem", padding:"10px 0" }} onClick={onAdmin}>🛡️ Teacher Admin</button>
-      </div>
-    </div>
-  );
+function printList(){ buildPrintArea(state.cls); window.print(); }
+function printTopic(){ buildPrintArea(null); window.print(); }
+
+function render(){
+  renderCrumbs();
+  const main = document.getElementById('main');
+  main.innerHTML = '';
+
+  if(state.view==='stage'){
+    const p = document.createElement('p'); p.className='intro'; p.textContent='Which year group are you building words for?';
+    main.appendChild(p);
+    buildWall(main, STAGES, ([code,desc])=>{
+      const b = document.createElement('button'); b.className='brick stage';
+      b.innerHTML = code+'<span class="stagesub">'+desc+'</span>';
+      b.onclick = ()=>{ state.stage = STAGES.findIndex(s=>s[0]===code); state.view='topics'; render(); };
+      return b;
+    });
+  }
+
+  else if(state.view==='topics'){
+    const p = document.createElement('p'); p.className='intro'; p.textContent='Pick a topic wall to build.';
+    main.appendChild(p);
+    const stageCode = STAGES[state.stage][0];
+    const entries = Object.entries(T).filter(([slug])=> !TOPIC_ONLY_STAGE[slug] || TOPIC_ONLY_STAGE[slug]===stageCode);
+    buildWall(main, entries, ([slug,[label]])=>{
+      const b = document.createElement('button'); b.className='brick';
+      b.textContent = label;
+      b.onclick = ()=>{ state.topic=slug; state.view='classes'; render(); };
+      return b;
+    });
+  }
+
+  else if(state.view==='classes'){
+    const p = document.createElement('p'); p.className='intro'; p.textContent='Which word class do you need?';
+    main.appendChild(p);
+    const printRow = document.createElement('div'); printRow.className='printrow';
+    const printTopicBtn = document.createElement('button'); printTopicBtn.className='printbtn'; printTopicBtn.textContent='🖨️ Print this whole topic'; printTopicBtn.onclick = printTopic;
+    printRow.appendChild(printTopicBtn);
+    main.appendChild(printRow);
+    const stageCode = STAGES[state.stage][0];
+    const classList = stageCode==='KS1' ? CLASSES.filter(([slug])=>KS1_CLASSES.has(slug))
+                     : stageCode==='UKS2' ? CLASSES
+                     : BASE_CLASSES;
+    buildWall(main, classList, ([slug,label])=>{
+      const b = document.createElement('button'); b.className='brick';
+      b.textContent = label;
+      b.onclick = ()=>{ state.cls=slug; state.q=''; state.view='words'; render(); };
+      return b;
+    });
+  }
+
+  else if(state.view==='words'){
+    const card = document.createElement('div'); card.className='card';
+    const printRow = document.createElement('div'); printRow.className='printrow';
+    const printListBtn = document.createElement('button'); printListBtn.className='printbtn'; printListBtn.textContent='🖨️ Print this list'; printListBtn.onclick = printList;
+    printRow.appendChild(printListBtn);
+
+    if(state.cls==='conjunctions' && STAGES[state.stage][0]!=='KS1'){
+      main.appendChild(printRow);
+      const cn = document.createElement('div'); cn.className='classname'; cn.textContent='Same for every topic';
+      card.appendChild(cn);
+      CONJ_GROUPS.forEach(group=>{
+        const gt = document.createElement('div'); gt.className='conjgrouptitle'; gt.textContent=group.groupTitle;
+        card.appendChild(gt);
+        const box = document.createElement('div'); box.className='conjbox';
+        group.cards.forEach(g=>{
+          const c=document.createElement('div'); c.className='conjcard';
+          c.innerHTML = '<h3>'+g.title+'</h3>' + g.items.map(([l,w])=>'<div><span class="letter">'+l+'</span> — '+w+'</div>').join('');
+          box.appendChild(c);
+        });
+        card.appendChild(box);
+      });
+      main.appendChild(card);
+      return;
+    }
+
+    const search = document.createElement('input'); search.type='search'; search.className='search';
+    search.placeholder='Search these words...'; search.value = state.q;
+    search.oninput = e=>{ state.q = e.target.value.toLowerCase(); renderWordTiles(); };
+    main.appendChild(printRow);
+    main.appendChild(search);
+    main.appendChild(card);
+
+    function renderWordTiles(){
+      card.innerHTML = '';
+      const data = T[state.topic][1][state.cls] || [];
+      const filtered = data.filter(([w,tier])=> tier<=state.stage && (!state.q || w.toLowerCase().includes(state.q)));
+      if(filtered.length===0){
+        const e = document.createElement('div'); e.className='empty';
+        e.textContent = 'No words yet at this level — try an older year group tab.';
+        card.appendChild(e); return;
+      }
+      const isPhrase = state.cls==='similes' || state.cls==='metaphors' || state.cls==='fronted';
+      const wrap = document.createElement('div'); wrap.className = 'tilewrap' + (isPhrase ? ' phrases':'');
+      filtered.forEach(([w],i)=>{
+        const t = document.createElement('div'); t.className='tile'+(isPhrase?' phrase':'');
+        t.textContent = w;
+        t.style.animationDelay = (i*0.04)+'s';
+        wrap.appendChild(t);
+      });
+      card.appendChild(wrap);
+    }
+    renderWordTiles();
+  }
 }
 
-function NameScreen({ label, onDone, existing }) {
-  const [name, setName] = useState("");
-  return (
-    <div style={S.center}>
-      <div style={S.card}>
-        <div style={{ fontSize:"2.5rem", marginBottom:8 }}>👤</div>
-        <h2 style={S.title}>{label || "What's your name?"}</h2>
-        <input style={S.input} maxLength={16} placeholder="Enter username…" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key==="Enter"&&name.trim()&&onDone(name.trim())} autoFocus />
-        <button style={{ ...S.btn, background:"#FF6B6B", marginTop:16 }} disabled={!name.trim()} onClick={() => onDone(name.trim())}>Let's Go! 🚀</button>
-        {existing && <button style={{ ...S.btn, background:"#eee", color:"#333", marginTop:10 }} onClick={() => onDone(existing)}>Back</button>}
-      </div>
-    </div>
-  );
+let resizeT;
+window.addEventListener('resize', ()=>{
+  clearTimeout(resizeT);
+  resizeT = setTimeout(()=>{ if(state.view==='topics'||state.view==='classes') render(); }, 200);
+});
+
+// ---- Teacher Zone: fetch + merge teacher-added topics/words, and the edit panel ----
+async function loadCustomWords(){
+  try{
+    const res = await fetch('/api/words');
+    if(!res.ok) return;
+    const data = await res.json();
+    const topics = data.topics || [];
+    const added = data.added || [];
+    const removed = data.removed || [];
+    for(const row of topics){
+      if(!T[row.slug]) T[row.slug] = [row.label, {}];
+      TOPIC_ONLY_STAGE[row.slug] = row.stage;
+    }
+    for(const row of added){
+      const stageIdx = STAGES.findIndex(s=>s[0]===row.stage);
+      if(stageIdx===-1 || !T[row.topic_slug]) continue;
+      const classes = T[row.topic_slug][1];
+      if(!classes[row.word_class]) classes[row.word_class] = [];
+      const already = classes[row.word_class].some(([w])=>w.toLowerCase()===row.word.toLowerCase());
+      if(!already) classes[row.word_class].push([row.word, stageIdx]);
+    }
+    for(const row of removed){
+      if(!T[row.topic_slug]) continue;
+      const classes = T[row.topic_slug][1];
+      if(!classes[row.word_class]) continue;
+      classes[row.word_class] = classes[row.word_class].filter(([w])=>w.toLowerCase()!==row.word.toLowerCase());
+    }
+  } catch(e){ /* offline or function unavailable — the built-in word lists still work fine */ }
 }
 
-function AccBadge({ correct, total, seconds }) {
-  if (!total) return null;
-  const pct = Math.round((correct / total) * 100);
-  const em = pct===100?"🎯":pct>=80?"✅":pct>=60?"👍":"💪";
-  const speed = total > 0 ? (seconds / total).toFixed(1) : null;
-  return (
-    <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"center", margin:"4px 0" }}>
-      <div style={{ background:"#f0f0f0", borderRadius:10, padding:"4px 12px", fontSize:"0.9rem", color:"#555" }}>
-        {em} {pct}% <span style={{ color:"#aaa", fontSize:"0.8rem" }}>({correct}/{total})</span>
-      </div>
-      {speed && (
-        <div style={{ background:"#e8f4fd", borderRadius:10, padding:"4px 12px", fontSize:"0.9rem", color:"#2980b9" }}>
-          ⚡ {speed}s per answer
-        </div>
-      )}
-    </div>
-  );
+let tzPin = null;
+
+function tzTopicOptions(stageCode){
+  return Object.entries(T).filter(([slug])=> !TOPIC_ONLY_STAGE[slug] || TOPIC_ONLY_STAGE[slug]===stageCode);
+}
+function tzClassOptions(stageCode){
+  return stageCode==='KS1' ? CLASSES.filter(([slug])=>KS1_CLASSES.has(slug))
+       : stageCode==='UKS2' ? CLASSES
+       : BASE_CLASSES;
 }
 
-function ResultScreen({ p1name, p1score, p1stars, p1stats, p2name, p2score, p2stars, p2stats, isBattle, onHome, onAgain }) {
-  return (
-    <div style={S.center}>
-      <div style={S.card}>
-        <div style={{ fontSize:"3rem" }}>{isBattle ? (p1score!==p2score?"🏆":"🤝") : (p1score>=20?"🏆":p1score>=10?"🌟":"💪")}</div>
-        <h2 style={S.title}>Results</h2>
-        {isBattle ? (
-          <>
-            <div style={{ marginBottom:12 }}>
-              <div style={S.resRow}><b style={{ color:"#FF6B6B" }}>🔴 {p1name}</b>: {p1score} pts {Array(p1stars).fill("⭐").join("")}<div><AccBadge correct={p1stats?.correct||0} total={p1stats?.total||0} seconds={60} /></div></div>
-              <div style={S.resRow}><b style={{ color:"#45B7D1" }}>🔵 {p2name}</b>: {p2score} pts {Array(p2stars).fill("⭐").join("")}<div><AccBadge correct={p2stats?.correct||0} total={p2stats?.total||0} seconds={60} /></div></div>
-            </div>
-            <div style={{ fontSize:"1.4rem", fontWeight:"bold", marginBottom:12, color:p1score>p2score?"#FF6B6B":p2score>p1score?"#45B7D1":"#FFA500" }}>
-              {p1score>p2score?"🎉 "+p1name+" wins!":p2score>p1score?"🎉 "+p2name+" wins!":"🤝 It's a draw!"}
-            </div>
-          </>
-        ) : (
-          <>
-            <p style={{ fontSize:"1.3rem", margin:"8px 0" }}>Score: <b>{p1score}</b></p>
-            <p style={{ fontSize:"1.1rem", margin:"6px 0" }}>Stars: <b>{p1stars} ⭐</b></p>
-            <div style={{ margin:"8px 0" }}><AccBadge correct={p1stats?.correct||0} total={p1stats?.total||0} seconds={60} /></div>
-          </>
-        )}
-        <button style={{ ...S.btn, background:"#FF6B6B", marginTop:8 }} onClick={onAgain}>Play Again 🔁</button>
-        <button style={{ ...S.btn, background:"#96CEB4", marginTop:10 }} onClick={onHome}>Home 🏠</button>
-      </div>
-    </div>
-  );
+function closeTeacherZone(){
+  const ov = document.getElementById('tzOverlay');
+  ov.style.display = 'none'; ov.innerHTML = '';
 }
 
-function LeaderboardScreen({ onHome }) {
-  const [tab, setTab] = useState("daily");
-  const all = loadStorage("ttb_scores");
-  const d = new Date(); d.setHours(0,0,0,0);
-  const w = new Date(); w.setDate(w.getDate()-w.getDay()); w.setHours(0,0,0,0);
-  const since = tab==="daily"?d.getTime():tab==="weekly"?w.getTime():0;
-  const rows = all.filter(e => e.ts>=since).sort((a,b)=>b.score-a.score).slice(0,10);
-  return (
-    <div style={S.center}>
-      <div style={{ ...S.card, maxWidth:420 }}>
-        <h2 style={S.title}>🏆 Leaderboard</h2>
-        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          {["daily","weekly","alltime"].map(t => (
-            <button key={t} style={{ ...S.tabBtn, background:tab===t?"#FF6B6B":"#eee", color:tab===t?"#fff":"#333" }} onClick={() => setTab(t)}>
-              {t==="daily"?"Today":t==="weekly"?"Week":"All Time"}
-            </button>
-          ))}
-        </div>
-        {rows.length===0
-          ? <p style={{ color:"#aaa" }}>No scores yet!</p>
-          : rows.map((e,i) => (
-            <div key={i} style={{ ...S.lbRow, background:i<3?["#FFF3C4","#F0F0F0","#FFE8D6"][i]:"#f9f9f9" }}>
-              <span style={{ minWidth:28 }}>{["🥇","🥈","🥉"][i]||i+1}</span>
-              <span style={{ flex:1, textAlign:"left", paddingLeft:8, fontWeight:i<3?"bold":"normal" }}>{e.username}</span>
-              <span style={{ fontWeight:"bold" }}>{e.score}</span>
-              {e.speed && <span style={{ marginLeft:6, fontSize:"0.78rem", color:"#2980b9", whiteSpace:"nowrap" }}>⚡{e.speed}s</span>}
-              <span style={{ marginLeft:6, fontSize:"0.8rem" }}>{Array(e.stars||0).fill("⭐").join("")}</span>
-            </div>
-          ))
-        }
-        <button style={{ ...S.btn, background:"#96CEB4", marginTop:16 }} onClick={onHome}>Home 🏠</button>
-      </div>
-    </div>
-  );
-}
-
-// ── App ──
-export default function App() {
-  const [screen, setScreen] = useState("init");
-  const [user, setUser] = useState(() => localStorage.getItem("ttb_user") || "");
-  const [p2, setP2] = useState("");
-  const [mode, setMode] = useState(null);
-  const [result, setResult] = useState(null);
-  const [admin, setAdmin] = useState(false);
-
-  useEffect(() => setScreen(user ? "home" : "name"), []);
-
-  const saveScore = (u, sc, st, stats) => {
-    const arr = loadStorage("ttb_scores");
-    const speed = stats && stats.total > 0 ? parseFloat((60 / stats.total).toFixed(1)) : null;
-    arr.push({ username:u, score:sc, stars:st, speed, ts:Date.now() });
-    saveStorage("ttb_scores", arr);
+function openPinPrompt(){
+  const ov = document.getElementById('tzOverlay');
+  ov.style.display = 'flex';
+  ov.innerHTML = '';
+  const box = document.createElement('div'); box.className='tzbox';
+  box.innerHTML = '<h2>Teacher Zone</h2><label for="tzpin">Enter PIN</label><input id="tzpin" type="password" inputmode="numeric" autocomplete="off">';
+  const row = document.createElement('div'); row.className='tzrow';
+  const cancel = document.createElement('button'); cancel.className='tzbtn ghost'; cancel.textContent='Cancel'; cancel.onclick=closeTeacherZone;
+  const go = document.createElement('button'); go.className='tzbtn primary'; go.textContent='Continue';
+  const msg = document.createElement('div'); msg.className='tzmsg';
+  go.onclick = async ()=>{
+    const pin = box.querySelector('#tzpin').value;
+    go.textContent='Checking...'; go.disabled=true;
+    try{
+      const res = await fetch('/api/words', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({pin, stage:'__check__', topic_slug:'', word_class:'', word:''})});
+      if(res.status===401){ msg.className='tzmsg err'; msg.textContent='Incorrect PIN — try again.'; go.textContent='Continue'; go.disabled=false; return; }
+      if(res.status===400){ // expected: PIN accepted, the placeholder fields just failed validation
+        tzPin = pin;
+        openAddWordForm();
+        return;
+      }
+      const data = await res.json().catch(()=>({}));
+      msg.className='tzmsg err'; msg.textContent = data.error || 'Something went wrong — is TEACHER_PIN set on the site?';
+      go.textContent='Continue'; go.disabled=false;
+    } catch(e){
+      msg.className='tzmsg err'; msg.textContent="Couldn't reach the teacher zone — check your connection.";
+      go.textContent='Continue'; go.disabled=false;
+    }
   };
-
-  return (
-    <>
-      {admin && <AdminConsole onClose={() => setAdmin(false)} />}
-
-      {screen==="init" && null}
-
-      {screen==="name" && (
-        <NameScreen label="What's your name?" existing={user} onDone={n => { setUser(n); localStorage.setItem("ttb_user",n); setScreen("home"); }} />
-      )}
-
-      {screen==="home" && (
-        <HomeScreen username={user} onChangeUser={() => setScreen("name")} onSolo={() => setScreen("soloMode")} onBattle={() => setScreen("battleMode")} onLeaderboard={() => setScreen("leaderboard")} onAdmin={() => setAdmin(true)} />
-      )}
-
-      {screen==="soloMode" && (
-        <ModeSelector label="Solo Game – Choose Mode" onSelect={m => { setMode(m); setScreen("solo"); }} />
-      )}
-
-      {screen==="battleMode" && (
-        <ModeSelector label="Live Battle – Choose Mode" onSelect={m => { setMode(m); setScreen("p2name"); }} />
-      )}
-
-      {screen==="p2name" && (
-        <NameScreen label="Player 2, enter your name!" onDone={n => { setP2(n); setScreen("battle"); }} />
-      )}
-
-      {screen==="solo" && mode && (
-        <SoloScreen username={user} mode={mode} onDone={(sc,st,stats) => { saveScore(user,sc,st,stats); setResult({ p1score:sc, p1stars:st, p1stats:stats, isBattle:false }); setScreen("result"); }} />
-      )}
-
-      {screen==="battle" && mode && (
-        <BattleScreen p1name={user} p2name={p2} mode={mode} onDone={(p1sc,p1st,p2sc,p2st,a1,a2) => { saveScore(user,p1sc,p1st,a1); saveScore(p2,p2sc,p2st,a2); setResult({ p1score:p1sc, p1stars:p1st, p1stats:a1, p2score:p2sc, p2stars:p2st, p2stats:a2, isBattle:true }); setScreen("result"); }} />
-      )}
-
-      {screen==="result" && result && (
-        <ResultScreen p1name={user} p2name={p2} {...result} onHome={() => setScreen("home")} onAgain={() => setScreen(result.isBattle ? "battleMode" : "soloMode")} />
-      )}
-
-      {screen==="leaderboard" && (
-        <LeaderboardScreen onHome={() => setScreen("home")} />
-      )}
-    </>
-  );
+  row.appendChild(cancel); row.appendChild(go);
+  box.appendChild(row); box.appendChild(msg);
+  ov.appendChild(box);
+  box.querySelector('#tzpin').focus();
 }
 
-const S = {
-  center: { minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"linear-gradient(135deg,#667eea22,#764ba222)", padding:16 },
-  card:   { background:"#fff", borderRadius:20, padding:28, boxShadow:"0 8px 32px rgba(0,0,0,0.12)", width:"100%", maxWidth:400, textAlign:"center" },
-  title:  { fontSize:"1.7rem", fontWeight:"bold", margin:"0 0 16px", color:"#333" },
-  btn:    { width:"100%", padding:"14px 0", borderRadius:12, border:"none", color:"#fff", fontSize:"1.1rem", fontWeight:"bold", cursor:"pointer", boxShadow:"0 3px 8px rgba(0,0,0,0.13)" },
-  choiceBtn: { padding:"16px 8px", borderRadius:14, border:"none", fontSize:"1.5rem", fontWeight:"bold", cursor:"pointer", boxShadow:"0 2px 6px rgba(0,0,0,0.12)" },
-  input:  { width:"100%", padding:"12px 16px", borderRadius:10, border:"2px solid #ddd", fontSize:"1.1rem", boxSizing:"border-box", outline:"none" },
-  tabBtn: { flex:1, padding:"8px 0", borderRadius:8, border:"none", fontWeight:"bold", cursor:"pointer", fontSize:"0.85rem" },
-  lbRow:  { display:"flex", alignItems:"center", padding:"9px 12px", borderRadius:10, marginBottom:6 },
-  resRow: { fontSize:"1.05rem", margin:"6px 0", padding:"8px 12px", background:"#f5f5f5", borderRadius:8 },
-};
+function tzTabs(box, mode){
+  const tabs = document.createElement('div'); tabs.className='tztabs';
+  const addTab = document.createElement('button'); addTab.className='tztab'+(mode==='add'?' active':''); addTab.textContent='Add a word';
+  const removeTab = document.createElement('button'); removeTab.className='tztab'+(mode==='remove'?' active':''); removeTab.textContent='Remove a word';
+  const topicTab = document.createElement('button'); topicTab.className='tztab'+(mode==='topic'?' active':''); topicTab.textContent='Add a topic';
+  addTab.onclick = openAddWordForm;
+  removeTab.onclick = openRemoveWordForm;
+  topicTab.onclick = openAddTopicForm;
+  tabs.appendChild(addTab); tabs.appendChild(removeTab); tabs.appendChild(topicTab);
+  box.appendChild(tabs);
+}
+
+function openAddWordForm(){
+  const ov = document.getElementById('tzOverlay');
+  ov.innerHTML = '';
+  const box = document.createElement('div'); box.className='tzbox';
+  box.innerHTML = '<h2>Teacher Zone</h2>';
+  tzTabs(box, 'add');
+
+  const stageSel = document.createElement('select');
+  STAGES.forEach(([code,desc])=>{ const o=document.createElement('option'); o.value=code; o.textContent=code+' — '+desc; stageSel.appendChild(o); });
+  const topicSel = document.createElement('select');
+  const classSel = document.createElement('select');
+  const wordInput = document.createElement('input'); wordInput.type='text'; wordInput.placeholder='e.g. shimmering';
+
+  function refreshTopics(){
+    topicSel.innerHTML = '';
+    tzTopicOptions(stageSel.value).forEach(([slug,[label]])=>{ const o=document.createElement('option'); o.value=slug; o.textContent=label; topicSel.appendChild(o); });
+  }
+  function refreshClasses(){
+    classSel.innerHTML = '';
+    tzClassOptions(stageSel.value).forEach(([slug,label])=>{ const o=document.createElement('option'); o.value=slug; o.textContent=label; classSel.appendChild(o); });
+  }
+  stageSel.onchange = ()=>{ refreshTopics(); refreshClasses(); };
+  refreshTopics(); refreshClasses();
+
+  const lab = (t)=>{ const l=document.createElement('label'); l.textContent=t; return l; };
+  box.appendChild(lab('Key stage')); box.appendChild(stageSel);
+  box.appendChild(lab('Topic')); box.appendChild(topicSel);
+  box.appendChild(lab('Word class')); box.appendChild(classSel);
+  box.appendChild(lab('Word or phrase')); box.appendChild(wordInput);
+
+  const row = document.createElement('div'); row.className='tzrow';
+  const done = document.createElement('button'); done.className='tzbtn ghost'; done.textContent='Done'; done.onclick=closeTeacherZone;
+  const add = document.createElement('button'); add.className='tzbtn primary'; add.textContent='Add word';
+  const msg = document.createElement('div'); msg.className='tzmsg';
+
+  add.onclick = async ()=>{
+    const word = wordInput.value.trim();
+    if(!word){ msg.className='tzmsg err'; msg.textContent='Type a word or phrase first.'; return; }
+    add.textContent='Adding...'; add.disabled=true;
+    try{
+      const res = await fetch('/api/words', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        pin: tzPin, action:'add', stage: stageSel.value, topic_slug: topicSel.value, word_class: classSel.value, word
+      })});
+      const data = await res.json();
+      if(!res.ok){ msg.className='tzmsg err'; msg.textContent=data.error || 'Something went wrong.'; }
+      else {
+        msg.className='tzmsg ok'; msg.textContent='Added! Everyone will see it next time they load the page.';
+        const stageIdx = STAGES.findIndex(s=>s[0]===stageSel.value);
+        const classes = T[topicSel.value][1];
+        if(!classes[classSel.value]) classes[classSel.value]=[];
+        classes[classSel.value].push([word, stageIdx]);
+        wordInput.value='';
+        if(state.view==='words' && state.topic===topicSel.value && state.cls===classSel.value) render();
+      }
+    } catch(e){
+      msg.className='tzmsg err'; msg.textContent="Couldn't reach the teacher zone — check your connection.";
+    }
+    add.textContent='Add word'; add.disabled=false;
+  };
+  row.appendChild(done); row.appendChild(add);
+  box.appendChild(row); box.appendChild(msg);
+  ov.appendChild(box);
+}
+
+function openRemoveWordForm(){
+  const ov = document.getElementById('tzOverlay');
+  ov.innerHTML = '';
+  const box = document.createElement('div'); box.className='tzbox';
+  box.innerHTML = '<h2>Teacher Zone</h2>';
+  tzTabs(box, 'remove');
+
+  const stageSel = document.createElement('select');
+  STAGES.forEach(([code,desc])=>{ const o=document.createElement('option'); o.value=code; o.textContent=code+' — '+desc; stageSel.appendChild(o); });
+  const topicSel = document.createElement('select');
+  const classSel = document.createElement('select');
+  const wordSel = document.createElement('select');
+
+  function refreshTopics(){
+    topicSel.innerHTML = '';
+    tzTopicOptions(stageSel.value).forEach(([slug,[label]])=>{ const o=document.createElement('option'); o.value=slug; o.textContent=label; topicSel.appendChild(o); });
+  }
+  function refreshClasses(){
+    classSel.innerHTML = '';
+    tzClassOptions(stageSel.value).forEach(([slug,label])=>{ const o=document.createElement('option'); o.value=slug; o.textContent=label; classSel.appendChild(o); });
+  }
+  function refreshWords(){
+    wordSel.innerHTML = '';
+    const stageIdx = STAGES.findIndex(s=>s[0]===stageSel.value);
+    const list = ((T[topicSel.value]||[])[1]||{})[classSel.value] || [];
+    const current = list.filter(([,tier])=>tier<=stageIdx).map(([w])=>w).sort((a,b)=>a.localeCompare(b));
+    if(current.length===0){
+      const o=document.createElement('option'); o.value=''; o.textContent='(no words here yet)'; wordSel.appendChild(o);
+    } else {
+      current.forEach(w=>{ const o=document.createElement('option'); o.value=w; o.textContent=w; wordSel.appendChild(o); });
+    }
+  }
+  stageSel.onchange = ()=>{ refreshTopics(); refreshClasses(); refreshWords(); };
+  topicSel.onchange = refreshWords;
+  classSel.onchange = refreshWords;
+  refreshTopics(); refreshClasses(); refreshWords();
+
+  const lab = (t)=>{ const l=document.createElement('label'); l.textContent=t; return l; };
+  box.appendChild(lab('Key stage')); box.appendChild(stageSel);
+  box.appendChild(lab('Topic')); box.appendChild(topicSel);
+  box.appendChild(lab('Word class')); box.appendChild(classSel);
+  box.appendChild(lab('Word to remove')); box.appendChild(wordSel);
+
+  const row = document.createElement('div'); row.className='tzrow';
+  const done = document.createElement('button'); done.className='tzbtn ghost'; done.textContent='Done'; done.onclick=closeTeacherZone;
+  const remove = document.createElement('button'); remove.className='tzbtn primary'; remove.textContent='Remove word';
+  const msg = document.createElement('div'); msg.className='tzmsg';
+
+  remove.onclick = async ()=>{
+    const word = wordSel.value;
+    if(!word){ msg.className='tzmsg err'; msg.textContent='Nothing to remove here.'; return; }
+    remove.textContent='Removing...'; remove.disabled=true;
+    try{
+      const res = await fetch('/api/words', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        pin: tzPin, action:'remove', stage: stageSel.value, topic_slug: topicSel.value, word_class: classSel.value, word
+      })});
+      const data = await res.json();
+      if(!res.ok){ msg.className='tzmsg err'; msg.textContent=data.error || 'Something went wrong.'; }
+      else {
+        msg.className='tzmsg ok'; msg.textContent='Removed for everyone.';
+        const classes = T[topicSel.value][1];
+        classes[classSel.value] = (classes[classSel.value]||[]).filter(([w])=>w.toLowerCase()!==word.toLowerCase());
+        refreshWords();
+        if(state.view==='words' && state.topic===topicSel.value && state.cls===classSel.value) render();
+      }
+    } catch(e){
+      msg.className='tzmsg err'; msg.textContent="Couldn't reach the teacher zone — check your connection.";
+    }
+    remove.textContent='Remove word'; remove.disabled=false;
+  };
+  row.appendChild(done); row.appendChild(remove);
+  box.appendChild(row); box.appendChild(msg);
+  ov.appendChild(box);
+}
+
+function openAddTopicForm(){
+  const ov = document.getElementById('tzOverlay');
+  ov.innerHTML = '';
+  const box = document.createElement('div'); box.className='tzbox';
+  box.innerHTML = '<h2>Teacher Zone</h2>';
+  tzTabs(box, 'topic');
+
+  const stageSel = document.createElement('select');
+  STAGES.forEach(([code,desc])=>{ const o=document.createElement('option'); o.value=code; o.textContent=code+' — '+desc; stageSel.appendChild(o); });
+  const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.placeholder='e.g. Volcanoes';
+
+  const lab = (t)=>{ const l=document.createElement('label'); l.textContent=t; return l; };
+  box.appendChild(lab('Key stage this topic is for')); box.appendChild(stageSel);
+  box.appendChild(lab('Topic name')); box.appendChild(nameInput);
+
+  const note = document.createElement('div'); note.className='tzmsg';
+  note.style.color='var(--sub)'; note.style.fontWeight='600';
+  note.textContent = 'This creates an empty topic with blank word-class tiles for that key stage — switch to "Add a word" afterwards to start filling it in.';
+  box.appendChild(note);
+
+  const row = document.createElement('div'); row.className='tzrow';
+  const done = document.createElement('button'); done.className='tzbtn ghost'; done.textContent='Done'; done.onclick=closeTeacherZone;
+  const create = document.createElement('button'); create.className='tzbtn primary'; create.textContent='Create topic';
+  const msg = document.createElement('div'); msg.className='tzmsg';
+
+  create.onclick = async ()=>{
+    const label = nameInput.value.trim();
+    if(!label){ msg.className='tzmsg err'; msg.textContent='Type a topic name first.'; return; }
+    create.textContent='Creating...'; create.disabled=true;
+    try{
+      const res = await fetch('/api/words', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        pin: tzPin, action:'add_topic', stage: stageSel.value, label
+      })});
+      const data = await res.json();
+      if(!res.ok){ msg.className='tzmsg err'; msg.textContent=data.error || 'Something went wrong.'; }
+      else {
+        T[data.slug] = [data.label, {}];
+        TOPIC_ONLY_STAGE[data.slug] = data.stage;
+        msg.className='tzmsg ok'; msg.textContent='"'+data.label+'" created for '+data.stage+'. Switch to "Add a word" to start populating it.';
+        nameInput.value='';
+        if(state.view==='topics') render();
+      }
+    } catch(e){
+      msg.className='tzmsg err'; msg.textContent="Couldn't reach the teacher zone — check your connection.";
+    }
+    create.textContent='Create topic'; create.disabled=false;
+  };
+  row.appendChild(done); row.appendChild(create);
+  box.appendChild(row); box.appendChild(msg);
+  ov.appendChild(box);
+}
+
+document.getElementById('tzOpen').onclick = openPinPrompt;
+document.getElementById('tzOverlay').addEventListener('click', (e)=>{ if(e.target.id==='tzOverlay') closeTeacherZone(); });
+
+loadCustomWords().then(render);
+render();
+</script>
+</body>
+</html>
